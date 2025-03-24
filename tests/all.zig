@@ -31,7 +31,11 @@ test "lexing test" {
     const allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
-    const content = TestTemplate.FileContent;
+    const content =
+        \\ <div>
+        \\  ||zz .field zz||
+        \\  <div attribute="||zz .attr zz||"></div>
+    ;
     var lexer = Lexer.init(content[0..]);
     var tokens = try lexer.process_input(arena.allocator());
 

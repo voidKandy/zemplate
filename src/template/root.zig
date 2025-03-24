@@ -21,9 +21,9 @@ pub fn Template(
     comptime Path: []const u8,
 ) type {
     const ContextInfo = @typeInfo(Context);
+    const FileContent = @embedFile(Path);
 
     return struct {
-        pub const FileContent = @embedFile(Path);
         const Self = @This();
         context: Context,
         allocator: std.mem.Allocator,
