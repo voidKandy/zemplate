@@ -15,10 +15,7 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    const lib = b.addStaticLibrary(.{
-        .name = "zemplate",
-        // In this case the main source file is merely a path, however, in more
-        // complicated build scripts, this could be a generated file.
+    const zemplate = b.addModule("zemplate", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
@@ -30,7 +27,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    lib_unit_tests.root_module.addImport("zemplate", &lib.root_module);
+    lib_unit_tests.root_module.addImport("zemplate", zemplate);
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
 
@@ -39,5 +36,4 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     // test_step.dependOn(&zemplate.step);
     test_step.dependOn(&run_lib_unit_tests.step);
-    test_step.dependOn(&lib.step);
 }
