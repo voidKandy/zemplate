@@ -8,7 +8,7 @@ const TokenType = parse.TokenType;
 
 /// Takes as arguments:
 /// `Context` - The type to be used for rendering this template
-/// `Path` - Path to the template file
+/// `TemplateString`
 pub fn Template(
     /// The type to be used to render the template
     /// + All of it's fields must be one of:
@@ -16,12 +16,11 @@ pub fn Template(
     ///    - []u8
     ///    - []ArrayList(u8)
     comptime Context: type,
-    /// the path of the file can be known at compile time
-    /// and so too can it's contents
-    comptime Path: []const u8,
+    /// This is the content of the template,
+    /// best used in conjuction with `@embedFile`
+    comptime TemplateString: []const u8,
 ) type {
     const ContextInfo = @typeInfo(Context);
-    const FileContent = @embedFile(Path);
 
     return struct {
         const Self = @This();
@@ -39,7 +38,7 @@ pub fn Template(
 
         pub fn render(self: *Self) !ArrayList(u8) {
             var buffer = ArrayList(u8).init(self.allocator);
-            var lexer = Lexer.init(FileContent[0..]);
+            var lexer = Lexer.init(TemplateString[0..]);
             var tokens: Tokens = try lexer.process_input(self.allocator);
 
             while (tokens.pop()) |t| {

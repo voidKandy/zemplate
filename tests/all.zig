@@ -2,7 +2,7 @@ const std = @import("std");
 const zemplate = @import("zemplate");
 
 const Test = struct { field: []const u8, attr: []const u8 };
-const TestTemplate = zemplate.template.Template(Test, "../test.html");
+const TestTemplate = zemplate.template.Template(Test, @embedFile("test.html"));
 // test file contains:
 // <div>
 //  ||zz .field zz||
