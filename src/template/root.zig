@@ -18,7 +18,7 @@ pub fn Template(
     comptime Context: type,
     /// This is the content of the template,
     /// best used in conjuction with `@embedFile`
-    comptime TemplateString: []const u8,
+    TemplateString: []const u8,
 ) type {
     const ContextInfo = @typeInfo(Context);
 
