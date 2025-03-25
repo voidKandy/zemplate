@@ -50,7 +50,7 @@ pub fn Template(
                     },
                     TokenType.Access => {
                         const lookup = std.mem.trim(u8, t.data.content, "\n .");
-                        std.log.warn("trying lookup: [{s}]\n", .{lookup});
+                        std.log.debug("trying lookup: [{s}]\n", .{lookup});
 
                         inline for (ContextInfo.Struct.fields) |f| {
                             if (std.mem.eql(u8, f.name, lookup)) {
@@ -64,6 +64,7 @@ pub fn Template(
                     else => {},
                 }
             }
+            std.log.debug("finished render\n", .{});
             return buffer;
         }
     };
