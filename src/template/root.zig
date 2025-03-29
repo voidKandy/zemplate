@@ -70,6 +70,7 @@ pub fn Template(
     };
 }
 
+/// returns a COPY of the field's value
 fn access_field(
     comptime fieldname: []const u8,
     comptime T: type,
@@ -79,7 +80,7 @@ fn access_field(
     const field = @field(ctx, fieldname);
     const FT = @TypeOf(field);
     switch (FT) {
-        []u8 => return field,
+        []u8 => return try allocator.dupe(u8, field),
         ArrayList(u8) => {
             const copy = try allocator.dupe(u8, field.items);
             return copy;
