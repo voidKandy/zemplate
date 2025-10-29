@@ -22,9 +22,11 @@ pub fn build(b: *std.Build) void {
     });
 
     const lib_unit_tests = b.addTest(.{
-        .root_source_file = b.path("tests/all.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/all.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     lib_unit_tests.root_module.addImport("zemplate", zemplate);
