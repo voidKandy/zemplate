@@ -11,33 +11,30 @@ pub const TokenType = enum {
 pub const Token = struct {
     content: []u8,
     typ: TokenType,
+    node: std.DoublyLinkedList.Node,
 
-    fn from_array_list(list: *ArrayList(u8), typ: TokenType) !Token {
-        const content = try list.toOwnedSlice();
-        return .{ .content = content, .typ = typ };
+    const Self = @This();
+
+    fn create(a: std.mem.Allocator, str: []u8, typ: TokenType) !*Self {
+        const self = try a.create(Self);
+        const content = try a.dupe(u8, str);
+        self.* = .{ .content = content, .typ = typ, .node = std.DoublyLinkedList.Node{} };
+        return self;
     }
 
-    fn from_const_array(array: []const u8, typ: TokenType, allocator: std.mem.Allocator) !Token {
-        var arraylist = ArrayList(u8).init(allocator);
-        for (array) |v| {
-            try arraylist.append(v);
-        }
-        return Token.from_array_list(&arraylist, typ);
-    }
-
-    fn into_node(self: @This(), allocator: std.mem.Allocator) !*Tokens.Node {
-        const node = try allocator.create(Tokens.Node);
-        node.* = Tokens.Node{ .data = self, .next = null };
-        return node;
+    pub fn deinit(self: *Self, a: std.mem.Allocator) void {
+        a.free(self.content);
     }
 };
 
-pub const Tokens = std.DoublyLinkedList(Token);
-
 pub const Lexer = struct {
-    const Self = @This();
     input: []const u8,
     pos: usize,
+
+    head: ?*Token = null,
+    tail: ?*Token = null,
+    const Self = @This();
+
     const MARKER_OPEN: []const u8 = "||zz";
     const MARKER_CLOSE: []const u8 = "zz||";
 
@@ -49,8 +46,38 @@ pub const Lexer = struct {
         return l;
     }
 
+    fn appendToken(self: *Self, tok: *Token) void {
+        std.log.warn("Appending {any} token\n", .{tok.typ});
+        if (tok.typ == .Block) {
+            std.log.warn(
+                \\
+                \\ token is of Block type:
+                \\ {s}
+                \\
+            , .{tok.content});
+        }
+
+        if (self.tail) |tail| {
+            tail.node.next = &tok.node;
+            tok.node.prev = &tail.node;
+            self.tail = tok;
+        } else {
+            // first element
+            self.head = tok;
+            self.tail = tok;
+            tok.node.prev = null;
+            tok.node.next = null;
+        }
+    }
+
     pub fn debug(l: *Self) void {
-        std.log.warn("lexer:\nposition: {d}\nnext_position: {d}\nchar: {c}\ninput: {s}\n", .{ l.pos, l.next_pos, l.ch, l.input });
+        std.log.warn(
+            \\ lexer:
+            \\ position: {d}
+            \\ next_position: {d}
+            \\ char: {c}
+            \\ input: {s}
+        , .{ l.pos, l.next_pos, l.ch, l.input });
     }
 
     /// Move forward by one byte
@@ -65,7 +92,7 @@ pub const Lexer = struct {
     }
 
     /// returns an optional pointer to the next char
-    pub fn peek_next(self: *Self) ?*const u8 {
+    pub fn peekNext(self: *Self) ?*const u8 {
         if (self.pos >= self.input.len) {
             return null;
         }
@@ -73,27 +100,27 @@ pub const Lexer = struct {
     }
 
     /// Progresses through input, outputting the head of a linked list of tokens
-    pub fn process_input(
+    pub fn processInput(
         self: *Self,
-        allocator: std.mem.Allocator,
-    ) !Tokens {
-        var tokens = Tokens{ .first = null };
-        var buffer = ArrayList(u8).init(allocator);
-        defer buffer.deinit();
+        a: std.mem.Allocator,
+    ) !void {
+        // var token_stream: Token = undefined;
+        var buffer = try ArrayList(u8).initCapacity(a, 1024 * 1024);
+        defer buffer.deinit(a);
 
         var prev_token: ?*const TokenType = null;
         var current_byte: ?u8 = null;
 
         outer: while (self.progress()) |c| {
-            try buffer.append(c);
+            try buffer.append(a, c);
             current_byte = c;
 
             switch (c) {
                 MARKER_OPEN[0] => {
                     for (1..MARKER_OPEN.len) |i| {
-                        if (self.peek_next().?.* == MARKER_OPEN[i]) {
+                        if (self.peekNext().?.* == MARKER_OPEN[i]) {
                             current_byte = self.progress();
-                            try buffer.append(current_byte.?);
+                            try buffer.append(a, current_byte.?);
                         } else {
                             continue :outer;
                         }
@@ -102,23 +129,26 @@ pub const Lexer = struct {
                     for (0..MARKER_OPEN.len) |_| {
                         _ = buffer.pop();
                     }
+                    const b =
+                        try buffer.toOwnedSlice(a);
+                    defer a.free(b);
+                    const block_token = try Token.create(a, b, .Block);
+                    self.appendToken(block_token);
 
-                    var block_token = try Token.from_array_list(&buffer, TokenType.Block);
-                    // std.log.warn("adding token with content: {s}\n", .{block_token.content});
-                    tokens.prepend(try block_token.into_node(allocator));
-
-                    var marker_token = try Token.from_const_array(MARKER_OPEN, TokenType.MarkerOpen, allocator);
-                    // std.log.warn("Adding open marker token\n", .{});
+                    var marker_token = try Token.create(
+                        a,
+                        @constCast(MARKER_OPEN),
+                        .MarkerOpen,
+                    );
                     prev_token = &marker_token.typ;
-                    tokens.prepend(try marker_token.into_node(allocator));
-                    // current_byte = self.progress();
+                    self.appendToken(marker_token);
                 },
 
                 MARKER_CLOSE[0] => {
                     for (1..MARKER_CLOSE.len) |i| {
-                        if (self.peek_next().?.* == MARKER_CLOSE[i]) {
+                        if (self.peekNext().?.* == MARKER_CLOSE[i]) {
                             current_byte = self.progress();
-                            try buffer.append(current_byte.?);
+                            try buffer.append(a, current_byte.?);
                         } else {
                             continue :outer;
                         }
@@ -136,14 +166,15 @@ pub const Lexer = struct {
                         }
                         break :blk TokenType.Block;
                     };
-                    var token = try Token.from_array_list(&buffer, typ);
-                    // std.log.warn("adding token with content: {s}\n", .{token.content});
-                    tokens.prepend(try token.into_node(allocator));
+                    const b =
+                        try buffer.toOwnedSlice(a);
+                    defer a.free(b);
+                    const token = try Token.create(a, b, typ);
+                    self.appendToken(token);
 
-                    var marker_token = try Token.from_const_array(MARKER_CLOSE, TokenType.MarkerClose, allocator);
-                    // std.log.warn("adding marker close\n", .{});
+                    var marker_token = try Token.create(a, @constCast(MARKER_CLOSE), .MarkerClose);
                     prev_token = &marker_token.typ;
-                    tokens.prepend(try marker_token.into_node(allocator));
+                    self.appendToken(marker_token);
                 },
                 else => {
                     // std.log.warn("matches none\nbuffer: [{s}]\n", .{buffer.items});
@@ -160,11 +191,11 @@ pub const Lexer = struct {
                 }
                 break :blk TokenType.Block;
             };
-            var token = try Token.from_array_list(&buffer, typ);
-            // std.log.warn("adding final token with content: {s}\n", .{token.content});
-            tokens.prepend(try token.into_node(allocator));
+            const b =
+                try buffer.toOwnedSlice(a);
+            defer a.free(b);
+            const token = try Token.create(a, b, typ);
+            self.appendToken(token);
         }
-
-        return tokens;
     }
 };

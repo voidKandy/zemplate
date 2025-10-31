@@ -1,9 +1,8 @@
 const std = @import("std");
-const root = @import("root");
-pub const parse = @import("parse.zig");
+const root = @import("root.zig");
+pub const parse = root.parse;
 const ArrayList = std.ArrayList;
 const Lexer = parse.Lexer;
-const Tokens = parse.Tokens;
 const TokenType = parse.TokenType;
 
 /// Takes as arguments:
@@ -37,32 +36,37 @@ pub fn Template(
         }
 
         pub fn render(self: *Self) !ArrayList(u8) {
-            var buffer = ArrayList(u8).init(self.allocator);
+            var buffer = try ArrayList(u8).initCapacity(self.allocator, 1024 * 1024);
             var lexer = Lexer.init(TemplateString[0..]);
-            var tokens: Tokens = try lexer.process_input(self.allocator);
+            try lexer.processInput(self.allocator);
 
-            while (tokens.pop()) |t| {
+            var current_node: ?*std.DoublyLinkedList.Node = &lexer.head.?.node;
+
+            while (current_node) |n| {
+                const t: *parse.Token = @fieldParentPtr("node", n);
                 defer self.allocator.destroy(t);
-                defer self.allocator.free(t.data.content);
-                switch (t.data.typ) {
+                defer t.*.deinit(self.allocator);
+                // defer self.allocator.free(t.content);
+                switch (t.typ) {
                     TokenType.Block => {
-                        try buffer.appendSlice(t.data.content);
+                        try buffer.appendSlice(self.allocator, t.content);
                     },
                     TokenType.Access => {
-                        const lookup = std.mem.trim(u8, t.data.content, "\n .");
+                        const lookup = std.mem.trim(u8, t.content, "\n .");
                         std.log.debug("trying lookup: [{s}]\n", .{lookup});
 
-                        inline for (ContextInfo.Struct.fields) |f| {
+                        inline for (ContextInfo.@"struct".fields) |f| {
                             if (std.mem.eql(u8, f.name, lookup)) {
                                 const val = try access_field(f.name, Context, self.allocator, self.context);
                                 defer self.allocator.free(val);
 
-                                try buffer.appendSlice(val);
+                                try buffer.appendSlice(self.allocator, val);
                             }
                         }
                     },
                     else => {},
                 }
+                current_node = t.node.next;
             }
             std.log.debug("finished render\n", .{});
             return buffer;
