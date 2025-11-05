@@ -9,8 +9,6 @@ It currently supports basic interpolation — inserting values from a context st
 
 ## Example Usage
 
-Define a context type for your template:
-
 ```zig
 const std = @import("std");
 const ArrayList = std.ArrayList;
