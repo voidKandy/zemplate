@@ -28,7 +28,7 @@ The output would be: "Hello World!"
 
 ## Notes
 
-* render() returns an ArrayList(u8) — you own it, so call deinit.
+* `render()` returns an `ArrayList(u8)` — you own it, so call `deinit()`.
 * Fields in your context can be `[]const u8`, `[]u8`, or `ArrayList(u8)`.
 * Templates copy field data during rendering, so the template does not take ownership of your context.
 * For owned fields (`[]u8` or `ArrayList(u8)`), implement a deinit method on your context.
