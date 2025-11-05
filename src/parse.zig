@@ -1,5 +1,6 @@
 const std = @import("std");
 const ArrayList = std.ArrayList;
+const log = std.log.scoped(.parse);
 
 pub const TokenType = enum {
     Block,
@@ -47,9 +48,9 @@ pub const Lexer = struct {
     }
 
     fn appendToken(self: *Self, tok: *Token) void {
-        std.log.warn("Appending {any} token\n", .{tok.typ});
+        log.debug("Appending {any} token\n", .{tok.typ});
         if (tok.typ == .Block) {
-            std.log.warn(
+            log.debug(
                 \\
                 \\ token is of Block type:
                 \\ {s}
@@ -71,7 +72,7 @@ pub const Lexer = struct {
     }
 
     pub fn debug(l: *Self) void {
-        std.log.warn(
+        log.debug(
             \\ lexer:
             \\ position: {d}
             \\ next_position: {d}
@@ -104,7 +105,6 @@ pub const Lexer = struct {
         self: *Self,
         a: std.mem.Allocator,
     ) !void {
-        // var token_stream: Token = undefined;
         var buffer = try ArrayList(u8).initCapacity(a, 1024 * 1024);
         defer buffer.deinit(a);
 
@@ -125,10 +125,10 @@ pub const Lexer = struct {
                             continue :outer;
                         }
                     }
-
-                    for (0..MARKER_OPEN.len) |_| {
-                        _ = buffer.pop();
+                    if (std.mem.endsWith(u8, buffer.items, MARKER_OPEN)) {
+                        buffer.shrinkRetainingCapacity(buffer.items.len - MARKER_OPEN.len);
                     }
+
                     const b =
                         try buffer.toOwnedSlice(a);
                     defer a.free(b);
@@ -153,9 +153,8 @@ pub const Lexer = struct {
                             continue :outer;
                         }
                     }
-
-                    for (0..MARKER_CLOSE.len) |_| {
-                        _ = buffer.pop();
+                    if (std.mem.endsWith(u8, buffer.items, MARKER_CLOSE)) {
+                        buffer.shrinkRetainingCapacity(buffer.items.len - MARKER_CLOSE.len);
                     }
 
                     const typ = blk: {
@@ -177,7 +176,7 @@ pub const Lexer = struct {
                     self.appendToken(marker_token);
                 },
                 else => {
-                    // std.log.warn("matches none\nbuffer: [{s}]\n", .{buffer.items});
+                    // log.debug("matches none\nbuffer: [{s}]\n", .{buffer.items});
                 },
             }
         }
