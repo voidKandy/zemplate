@@ -11,7 +11,6 @@ It currently supports basic interpolation — inserting values from a context st
 
 ```zig
 const std = @import("std");
-const ArrayList = std.ArrayList;
 const allocator = std.testing.allocator;
 
 const MyContext = struct { field: []const u8 };
