@@ -21,7 +21,7 @@ var tmplt = MyTemplate.init(MyContext{ .field = "World" }, allocator);
 var render = try tmplt.render();
 defer render.deinit(allocator);
 
-std.debug.print("{s}\n", .{ render.items });
+std.debug.print("{s}", .{ render.items });
 ```
 The output would be: "Hello World!"
 
