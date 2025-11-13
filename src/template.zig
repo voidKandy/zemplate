@@ -72,6 +72,7 @@ pub fn Template(
                         inline for (ContextInfo.@"struct".fields) |f| {
                             if (std.mem.eql(u8, f.name, lookup)) {
                                 const val = try self.accessField(f.name);
+                                log.debug("Lookup successful: {d} bytes\n", .{val.len});
                                 defer self.allocator.free(val);
 
                                 try buffer.appendSlice(self.allocator, val);
