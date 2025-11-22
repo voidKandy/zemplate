@@ -2,8 +2,8 @@ const std = @import("std");
 const root = @import("root.zig");
 pub const parse = root.parse;
 const ArrayList = std.ArrayList;
-const Lexer = parse.Lexer;
-const TokenType = parse.TokenType;
+const Lexer = @import("Lexer.zig");
+const Token = @import("Token.zig");
 const log = std.log.scoped(.template);
 
 /// Takes as arguments:
@@ -50,41 +50,51 @@ pub fn Template(
             }
         }
 
-        pub fn render(self: *Self) Error!ArrayList(u8) {
+        pub fn render(self: *Self) Error![]u8 {
             var buffer = try ArrayList(u8).initCapacity(self.allocator, 1024 * 1024);
             var lexer = Lexer.init(TemplateString[0..]);
-            try lexer.processInput(self.allocator);
+            var prev_token: ?Token.Type = null;
 
-            var current_node: ?*std.DoublyLinkedList.Node = &lexer.head.?.node;
-
-            while (current_node) |n| {
-                const t: *parse.Token = @fieldParentPtr("node", n);
-                defer self.allocator.destroy(t);
-                defer t.*.deinit(self.allocator);
-                switch (t.typ) {
-                    TokenType.Block => {
-                        try buffer.appendSlice(self.allocator, t.literal);
+            while (try lexer.nextToken(self.allocator)) |token| {
+                const dbg = try token.debugStr(self.allocator);
+                defer self.allocator.free(dbg);
+                switch (token.typ) {
+                    .generic => {
+                        try buffer.appendSlice(self.allocator, token.literal);
                     },
-                    TokenType.Access => {
-                        const lookup = std.mem.trim(u8, t.literal, "\n .");
-                        log.debug("trying lookup: [{s}]\n", .{lookup});
-
+                    .access => {
+                        log.debug("trying lookup: [{s}]\n", .{token.literal[1..]});
                         inline for (ContextInfo.@"struct".fields) |f| {
-                            if (std.mem.eql(u8, f.name, lookup)) {
+                            if (std.mem.eql(u8, f.name, token.literal[1..])) {
                                 const val = try self.accessField(f.name);
                                 log.debug("Lookup successful: {d} bytes\n", .{val.len});
                                 defer self.allocator.free(val);
-
                                 try buffer.appendSlice(self.allocator, val);
+                                break;
                             }
+                        }
+                    },
+                    .newline, .space => {
+                        if (should_append: {
+                            const t = prev_token orelse break :should_append true;
+                            break :should_append switch (t) {
+                                // whitespace within marker_open & marker_close should be ignored
+                                .access, .json, .marker_open => false,
+                                else => true,
+                            };
+                        }) {
+                            try buffer.append(self.allocator, token.typ.literal().?[0]);
                         }
                     },
                     else => {},
                 }
-                current_node = t.node.next;
+                if (!token.typ.isWhitespace()) {
+                    prev_token = token.typ;
+                }
+                log.debug("buffer updated:\n[{s}]", .{buffer.items});
             }
             log.debug("finished render\n", .{});
-            return buffer;
+            return buffer.toOwnedSlice(self.allocator);
         }
     };
 }

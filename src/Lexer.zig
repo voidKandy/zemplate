@@ -9,8 +9,6 @@ pos: usize,
 // keeps track of the last NON WHITESPACE token
 prev_token: ?Token.Type = null,
 
-head: ?*Token = null,
-tail: ?*Token = null,
 const Self = @This();
 
 pub fn init(input: []const u8) Self {
@@ -21,38 +19,14 @@ pub fn init(input: []const u8) Self {
     return l;
 }
 
-fn appendToken(self: *Self, tok: *Token) void {
-    log.debug("Appending {any} token\n", .{tok.typ});
-    if (tok.typ == .Block) {
-        log.debug(
-            \\
-            \\ token is of Block type:
-            \\ {s}
-            \\
-        , .{tok.literal});
-    }
-
-    if (self.tail) |tail| {
-        tail.node.next = &tok.node;
-        tok.node.prev = &tail.node;
-        self.tail = tok;
-    } else {
-        // first element
-        self.head = tok;
-        self.tail = tok;
-        tok.node.prev = null;
-        tok.node.next = null;
-    }
-}
-
-pub fn debug(l: *Self) void {
-    log.debug(
+pub fn debugStr(self: Self, a: mem.Allocator) mem.Allocator.Error![]u8 {
+    std.fmt.allocPrint(a,
         \\ lexer:
         \\ position: {d}
         \\ next_position: {d}
         \\ char: {c}
         \\ input: {s}
-    , .{ l.pos, l.next_pos, l.ch, l.input });
+    , .{ self.pos, self.next_pos, self.ch, self.input });
 }
 
 /// Move forward by one byte
@@ -74,7 +48,7 @@ pub fn peekNext(self: *Self) ?*const u8 {
     return &self.input[self.pos];
 }
 
-pub fn nextToken(self: *Self, a: mem.Allocator) anyerror!?Token {
+pub fn nextToken(self: *Self, a: mem.Allocator) mem.Allocator.Error!?Token {
     var slice_end: usize = self.pos + 1;
     var slice_start: usize = self.pos;
     var current_byte: ?u8 = null;
@@ -121,7 +95,10 @@ pub fn nextToken(self: *Self, a: mem.Allocator) anyerror!?Token {
 
         if (self.peekNext() == null or
             self.peekNext().?.* == Token.Type.space.literal().?[0] or
-            self.peekNext().?.* == Token.Type.newline.literal().?[0])
+            self.peekNext().?.* == Token.Type.newline.literal().?[0] or
+            self.peekNext().?.* == Token.Type.json.literal().?[0] or
+            self.peekNext().?.* == Token.Type.marker_open.literal().?[0] or
+            self.peekNext().?.* == Token.Type.marker_close.literal().?[0])
             break :outer Token.create(self.input[slice_start..slice_end], tok);
     } else {
         break :outer null;
@@ -134,7 +111,7 @@ pub fn nextToken(self: *Self, a: mem.Allocator) anyerror!?Token {
         if (!token.typ.isWhitespace()) {
             self.prev_token = token.typ;
         }
-        log.info("NEXT TOKEN:\n{s}", .{debug_str});
+        log.debug("Got Token:\n{s}", .{debug_str});
     }
     return token_opt;
 }

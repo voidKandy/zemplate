@@ -1,21 +1,21 @@
 const std = @import("std");
 const zemplate = @import("zemplate");
-const Lexer = zemplate.parse.Lexer;
-const TokenType = zemplate.parse.TokenType;
-const Token = zemplate.parse.Token;
+const print = std.debug.print;
 
-const NewLexer = zemplate.Lexer;
-const NewToken = zemplate.Token;
-test "newshit" {
+const Lexer = zemplate.Lexer;
+const Token = zemplate.Token;
+
+test "lexer test" {
+    // std.testing.log_level = .debug;
     const a =
         std.testing.allocator;
     const content =
         \\ <div>
         \\  ||zz .field zz||
-        // \\  <div attribute="||zz .attr zz||"></div>
+        \\  <div attribute="||zz .attr zz||"></div>
     ;
 
-    const expected = &[_]NewToken{
+    const expected = &[_]Token{
         .{
             .literal = " ",
             .typ = .space,
@@ -60,8 +60,52 @@ test "newshit" {
             .literal = "\n",
             .typ = .newline,
         },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "<div",
+            .typ = .generic,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "attribute=\"",
+            .typ = .generic,
+        },
+        .{
+            .literal = "||zz",
+            .typ = .marker_open,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = ".attr",
+            .typ = .access,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "zz||",
+            .typ = .marker_close,
+        },
+        .{
+            .literal = "\"></div>",
+            .typ = .generic,
+        },
     };
-    var lexer = NewLexer.init(content[0..]);
+    var lexer = Lexer.init(content[0..]);
     var i: usize = 0;
     while (try lexer.nextToken(a)) |next| : (i += 1) {
         const debug_str = try next.debugStr(a);
@@ -78,9 +122,11 @@ test "newshit" {
             , .{ i, exp_debug_str, debug_str });
         }
     }
+    print("LEXER Test PASSED\n", .{});
 }
 
 test "readme test" {
+    // std.testing.log_level = .debug;
     const allocator = std.testing.allocator;
     const MyContext = struct { field: []const u8 };
 
@@ -92,10 +138,10 @@ test "readme test" {
     const expected =
         \\ Hello World!
     ;
-    var render = try tmplt.render();
-    defer render.deinit(allocator);
+    const render = try tmplt.render();
+    defer allocator.free(render);
 
-    if (!std.mem.eql(u8, expected, render.items)) {
+    if (!std.mem.eql(u8, expected, render)) {
         std.log.err(
             \\ did not get expected render!
             \\ Expected:
@@ -103,13 +149,14 @@ test "readme test" {
             \\ got:
             \\ {s}
             \\
-        , .{ expected, render.items });
+        , .{ expected, render });
         return;
     }
-    std.debug.print("README Test PASSED\n", .{});
+    print("README Test PASSED\n", .{});
 }
 
 test "render test" {
+    // std.testing.log_level = .debug;
     const Test = struct {
         field1: []const u8,
         field2: []u8,
@@ -148,10 +195,10 @@ test "render test" {
         \\</div>
     ;
 
-    var render = try template.render();
-    defer render.deinit(allocator);
+    const render = try template.render();
+    defer allocator.free(render);
 
-    if (!std.mem.eql(u8, expected, render.items)) {
+    if (!std.mem.eql(u8, expected, render)) {
         std.log.err(
             \\ did not get expected render!
             \\ Expected:
@@ -159,88 +206,9 @@ test "render test" {
             \\ got:
             \\ {s}
             \\
-        , .{ expected, render.items });
+        , .{ expected, render });
         return;
     }
 
-    std.debug.print("Render Test PASSED\n", .{});
-}
-
-test "lexing test" {
-    const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-    const content =
-        \\ <div>
-        \\  ||zz .field zz||
-        \\  <div attribute="||zz .attr zz||"></div>
-    ;
-    var lexer = Lexer.init(content[0..]);
-    try lexer.processInput(arena.allocator());
-
-    const expected: [9]struct { content: []const u8, typ: TokenType } = .{ .{
-        .content = "<div>",
-        .typ = TokenType.Block,
-    }, .{
-        .content = "||zz",
-        .typ = TokenType.MarkerOpen,
-    }, .{
-        .content = ".field",
-        .typ = TokenType.Access,
-    }, .{
-        .content = "zz||",
-        .typ = TokenType.MarkerClose,
-    }, .{
-        .content = "<div attribute=\"",
-        .typ = TokenType.Block,
-    }, .{
-        .content = "||zz",
-        .typ = TokenType.MarkerOpen,
-    }, .{
-        .content = ".attr",
-        .typ = TokenType.Access,
-    }, .{
-        .content = "zz||",
-        .typ = TokenType.MarkerClose,
-    }, .{
-        .content = "\"></div>",
-        .typ = TokenType.Block,
-    } };
-
-    var i: usize = 0;
-
-    var current_node: ?*std.DoublyLinkedList.Node = &lexer.head.?.node;
-
-    // while (tokens.pop()) |t| : (i += 1) {
-    while (current_node) |n| {
-        const t: *Token = @fieldParentPtr("node", n);
-        const trimmed_ex = std.mem.trim(u8, expected[i].content, " \n");
-        const trimmed_got = std.mem.trim(u8, t.literal, " \n");
-        if (!std.mem.eql(u8, trimmed_ex, trimmed_got)) {
-            std.log.err(
-                \\ Trimmed incorrect!
-                \\ Expected:
-                \\ [{s}]
-                \\ Got:
-                \\ [{s}]
-                \\
-            , .{ trimmed_ex, trimmed_got });
-            return;
-        }
-        if (!std.meta.eql(expected[i].typ, t.typ)) {
-            std.log.err(
-                \\ Type incorrect!
-                \\ Expected:
-                \\ {any}
-                \\ Got:
-                \\ {any}
-                \\
-            , .{ expected[i].typ, t.typ });
-            return;
-        }
-
-        i += 1;
-        current_node = t.node.next;
-    }
-    std.debug.print("Lexing Test PASSED\n", .{});
+    print("Render Test PASSED\n", .{});
 }
