@@ -4,6 +4,82 @@ const Lexer = zemplate.parse.Lexer;
 const TokenType = zemplate.parse.TokenType;
 const Token = zemplate.parse.Token;
 
+const NewLexer = zemplate.Lexer;
+const NewToken = zemplate.Token;
+test "newshit" {
+    const a =
+        std.testing.allocator;
+    const content =
+        \\ <div>
+        \\  ||zz .field zz||
+        // \\  <div attribute="||zz .attr zz||"></div>
+    ;
+
+    const expected = &[_]NewToken{
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "<div>",
+            .typ = .generic,
+        },
+        .{
+            .literal = "\n",
+            .typ = .newline,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "||zz",
+            .typ = .marker_open,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = ".field",
+            .typ = .access,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "zz||",
+            .typ = .marker_close,
+        },
+        .{
+            .literal = "\n",
+            .typ = .newline,
+        },
+    };
+    var lexer = NewLexer.init(content[0..]);
+    var i: usize = 0;
+    while (try lexer.nextToken(a)) |next| : (i += 1) {
+        const debug_str = try next.debugStr(a);
+        defer a.free(debug_str);
+        if (!expected[i].eql(next)) {
+            const exp_debug_str = try expected[i].debugStr(a);
+            defer a.free(exp_debug_str);
+
+            std.debug.panic(
+                \\ Token {d} Expected:
+                \\ {s}
+                \\ Got:
+                \\ {s}
+            , .{ i, exp_debug_str, debug_str });
+        }
+    }
+}
+
 test "readme test" {
     const allocator = std.testing.allocator;
     const MyContext = struct { field: []const u8 };
@@ -139,7 +215,7 @@ test "lexing test" {
     while (current_node) |n| {
         const t: *Token = @fieldParentPtr("node", n);
         const trimmed_ex = std.mem.trim(u8, expected[i].content, " \n");
-        const trimmed_got = std.mem.trim(u8, t.content, " \n");
+        const trimmed_got = std.mem.trim(u8, t.literal, " \n");
         if (!std.mem.eql(u8, trimmed_ex, trimmed_got)) {
             std.log.err(
                 \\ Trimmed incorrect!

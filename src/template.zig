@@ -63,10 +63,10 @@ pub fn Template(
                 defer t.*.deinit(self.allocator);
                 switch (t.typ) {
                     TokenType.Block => {
-                        try buffer.appendSlice(self.allocator, t.content);
+                        try buffer.appendSlice(self.allocator, t.literal);
                     },
                     TokenType.Access => {
-                        const lookup = std.mem.trim(u8, t.content, "\n .");
+                        const lookup = std.mem.trim(u8, t.literal, "\n .");
                         log.debug("trying lookup: [{s}]\n", .{lookup});
 
                         inline for (ContextInfo.@"struct".fields) |f| {
