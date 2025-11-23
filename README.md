@@ -17,17 +17,34 @@ const MyContext = struct { field: []const u8 };
 const MyTemplate = zemplate.Template(MyContext,
     \\Hello ||zz .field zz||!
 );
-var tmplt = MyTemplate.init(MyContext{ .field = "World" }, allocator);
-var render = try tmplt.render();
-defer render.deinit(allocator);
+var tmplt = MyTemplate.init(MyContext{ .field = "World" });
+var render = try tmplt.render(allocator);
+defer allocator.free(render);
 
 std.debug.print("{s}", .{ render.items });
 ```
 The output would be: "Hello World!"
 
+### Json Serialization
+There is also support for serializing fields as JSON, this is a newer feature and may have some bugs.
+```zig
+const std = @import("std");
+const allocator = std.testing.allocator;
+
+const MyContext = struct { field: struct {key: u64} };
+const MyTemplate = zemplate.Template(MyContext,
+    \\Hello ||zz .field json zz||!
+);
+var tmplt = MyTemplate.init(MyContext{ .field = .{ .key = 42 } });
+var render = try tmplt.render(allocator);
+defer allocator.free(render);
+
+std.debug.print("{s}", .{ render });
+```
+The output would be: "Hello { "key": 42 }!"
+
+
 ## Notes
 
-* `render()` returns an `ArrayList(u8)` — you own it, so call `deinit()`.
-* Fields that you would like to render in your template from your context type must be `[]const u8`, `[]u8`, or `ArrayList(u8)`.
-* Templates copy field data during rendering, so the template does not take ownership of your context.
+* Fields that you would like to render in your template from your context type must be `[]const u8`, `[]u8`, or `ArrayList(u8)`, otherwise the keyword `json` must be used in order to render the field.
 * For owned fields (`[]u8` or `ArrayList(u8)`), implement a deinit method on your context.
