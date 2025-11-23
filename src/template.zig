@@ -34,7 +34,7 @@ pub fn Template(
             };
         }
 
-        const SerializeOptions = struct { field_name: []const u8, json: bool = false };
+        const SerializeOptions = struct { field_name: []const u8, json: ?*const std.json.Stringify.Options = null };
 
         /// Serializes field of Context according to the options passed & writes it to the writer
         fn serializeField(
@@ -63,10 +63,10 @@ pub fn Template(
                         else => {},
                     }
 
-                    if (opts.json) {
+                    if (opts.json) |o| {
                         try switch (@typeInfo(Ft)) {
-                            .pointer => std.json.Stringify.value(field.*, .{ .whitespace = .indent_2 }, writer),
-                            else => std.json.Stringify.value(field, .{ .whitespace = .indent_2 }, writer),
+                            .pointer => std.json.Stringify.value(field.*, o.*, writer),
+                            else => std.json.Stringify.value(field, o.*, writer),
                         };
                         return;
                     }
@@ -74,8 +74,8 @@ pub fn Template(
                 }
             }
         }
-
-        pub fn render(self: *Self, a: std.mem.Allocator) Error![]u8 {
+        /// Opts might need to be a struct rather than just for json
+        pub fn render(self: *Self, a: std.mem.Allocator, json_opts: std.json.Stringify.Options) Error![]u8 {
             var out: std.io.Writer.Allocating = .init(a);
             defer out.deinit();
             // var buffer = try ArrayList(u8).initCapacity(a, 1024 * 1024);
@@ -98,7 +98,7 @@ pub fn Template(
                         if (current_access == null)
                             return error.SyntaxInvalid;
 
-                        current_access.?.json = true;
+                        current_access.?.json = &json_opts;
                         log.debug("current: {any}", .{current_access.?});
                     },
                     .marker_close => {

@@ -138,7 +138,7 @@ test "readme test" {
     const expected =
         \\ Hello World!
     ;
-    const render = try tmplt.render(allocator);
+    const render = try tmplt.render(allocator, .{ .whitespace = .indent_2 });
     defer allocator.free(render);
 
     if (!std.mem.eql(u8, expected, render)) {
@@ -207,7 +207,7 @@ test "render test" {
         \\</div>
     ;
 
-    const render = try template.render(allocator);
+    const render = try template.render(allocator, .{ .whitespace = .indent_2 });
     defer allocator.free(render);
 
     if (!std.mem.eql(u8, expected, render)) {
