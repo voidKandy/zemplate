@@ -134,11 +134,11 @@ test "readme test" {
         \\ Hello ||zz .field zz||!
     );
 
-    var tmplt = MyTemplate.init(MyContext{ .field = "World" }, allocator);
+    var tmplt = MyTemplate.init(MyContext{ .field = "World" });
     const expected =
         \\ Hello World!
     ;
-    const render = try tmplt.render();
+    const render = try tmplt.render(allocator);
     defer allocator.free(render);
 
     if (!std.mem.eql(u8, expected, render)) {
@@ -158,44 +158,56 @@ test "readme test" {
 test "render test" {
     // std.testing.log_level = .debug;
     const Test = struct {
-        field1: []const u8,
-        field2: []u8,
-        field3: std.ArrayList(u8),
+        field1: std.ArrayList(u8),
+        field2: struct {
+            str: []const u8,
+            number: u32,
+        },
+        field3: []const u8,
+        field4: []u8,
 
         fn deinit(self: *@This(), a: std.mem.Allocator) void {
-            a.free(self.field2);
-            self.field3.deinit(a);
+            self.field1.deinit(a);
+            a.free(self.field4);
         }
     };
 
     // test file contains:
     // <div>
     //    ||zz .field1 zz||
-    //    <div style="||zz .field2 zz||">
-    //    ||zz .field3 zz||
+    //    <div style="||zz .field2 json zz||">
+    //      <||zz .field3 zz||>
+    //        ||zz .field4 zz||
+    //      </||zz .field3 zz||>
     //   </div>
     // </div>
     const TestTemplate = zemplate.Template(Test, @embedFile("test.html"));
     const allocator = std.testing.allocator;
     var ctx = Test{
-        .field1 = "this is a field",
-        .field2 = try allocator.dupe(u8, "this is field 2"),
-        .field3 = std.ArrayList(u8).fromOwnedSlice(try allocator.dupe(u8, "this is field 3")),
+        .field1 = std.ArrayList(u8).fromOwnedSlice(try allocator.dupe(u8, "this is a field")),
+        .field2 = .{ .str = "hello world", .number = 42 },
+        .field3 = "section",
+        .field4 = try allocator.dupe(u8, "this is field 4"),
     };
 
     defer ctx.deinit(allocator);
 
-    var template = TestTemplate.init(ctx, allocator);
+    var template = TestTemplate.init(ctx);
     const expected =
         \\<div>
         \\  this is a field
-        \\  <div style="this is field 2">
-        \\    this is field 3
+        \\  <div style="{
+        \\  "str": "hello world",
+        \\  "number": 42
+        \\}">
+        \\    <section>
+        \\      this is field 4
+        \\    </section>
         \\  </div>
         \\</div>
     ;
 
-    const render = try template.render();
+    const render = try template.render(allocator);
     defer allocator.free(render);
 
     if (!std.mem.eql(u8, expected, render)) {

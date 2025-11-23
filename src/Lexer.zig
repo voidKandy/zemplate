@@ -54,7 +54,7 @@ pub fn nextToken(self: *Self, a: mem.Allocator) mem.Allocator.Error!?Token {
     var current_byte: ?u8 = null;
 
     const token_opt: ?Token = outer: while (self.progress()) |c| : (slice_end += 1) {
-        log.debug("char: {c}\npos: {d}\nstart: {d}\nend: {d}\n", .{ c, self.pos, slice_start, slice_end });
+        log.info("char: {c}\npos: {d}\nstart: {d}\nend: {d}\n", .{ c, self.pos, slice_start, slice_end });
         const possible_match: ?Token.Type =
             switch (c) {
                 Token.Type.marker_close.literal().?[0] => .marker_close,
