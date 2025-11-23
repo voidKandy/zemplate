@@ -64,12 +64,22 @@ pub fn Template(
                     }
 
                     if (opts.json) |o| {
-                        try switch (@typeInfo(Ft)) {
-                            .pointer => std.json.Stringify.value(field.*, o.*, writer),
-                            else => std.json.Stringify.value(field, o.*, writer),
-                        };
+                        switch (@typeInfo(Ft)) {
+                            .pointer => |ptr| {
+                                switch (ptr.size) {
+                                    .slice => try std.json.Stringify.value(field, o.*, writer),
+                                    .one => try std.json.Stringify.value(field.*, o.*, writer),
+                                    else => return error.CannotSerialize,
+                                }
+                            },
+                            else => try std.json.Stringify.value(field, o.*, writer),
+                        }
+                        // @compileLog(" Cannot Serialize: " ++
+                        //     @typeName(Ft));
                         return;
                     }
+                    // @compileLog(" Cannot Serialize: " ++
+                    //     @typeName(Ft));
                     return error.CannotSerialize;
                 }
             }

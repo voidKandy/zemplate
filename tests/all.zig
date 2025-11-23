@@ -156,15 +156,19 @@ test "readme test" {
 }
 
 test "render test" {
-    // std.testing.log_level = .debug;
-    const Test = struct {
-        field1: std.ArrayList(u8),
-        field2: struct {
+    const Field2 =
+        struct {
             str: []const u8,
             number: u32,
-        },
+        };
+    const Field5 =
+        struct { num: u32 }; // std.testing.log_level = .debug;
+    const Test = struct {
+        field1: std.ArrayList(u8),
+        field2: Field2,
         field3: []const u8,
         field4: []u8,
+        field5: []const Field5,
 
         fn deinit(self: *@This(), a: std.mem.Allocator) void {
             self.field1.deinit(a);
@@ -179,6 +183,7 @@ test "render test" {
     //      <||zz .field3 zz||>
     //        ||zz .field4 zz||
     //      </||zz .field3 zz||>
+    //        ||zz .field5 zz||
     //   </div>
     // </div>
     const TestTemplate = zemplate.Template(Test, @embedFile("test.html"));
@@ -188,6 +193,10 @@ test "render test" {
         .field2 = .{ .str = "hello world", .number = 42 },
         .field3 = "section",
         .field4 = try allocator.dupe(u8, "this is field 4"),
+        .field5 = &[_]Field5{
+            .{ .num = 420 },
+            .{ .num = 69 },
+        },
     };
 
     defer ctx.deinit(allocator);
@@ -196,18 +205,17 @@ test "render test" {
     const expected =
         \\<div>
         \\  this is a field
-        \\  <div style="{
-        \\  "str": "hello world",
-        \\  "number": 42
-        \\}">
+        \\  <div style="{"str":"hello world","number":42}">
         \\    <section>
         \\      this is field 4
         \\    </section>
+        \\
+        \\    [{"num":420},{"num":69}]
         \\  </div>
         \\</div>
     ;
 
-    const render = try template.render(allocator, .{ .whitespace = .indent_2 });
+    const render = try template.render(allocator, .{ .whitespace = .minified });
     defer allocator.free(render);
 
     if (!std.mem.eql(u8, expected, render)) {
