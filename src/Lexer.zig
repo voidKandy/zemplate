@@ -67,6 +67,9 @@ pub fn nextToken(self: *Self, a: mem.Allocator) mem.Allocator.Error!?Token {
             };
 
         if (possible_match) |tok| {
+            if (tok == .json)
+                if (self.prev_token orelse continue :outer != .access)
+                    continue :outer;
             const str = tok.literal().?;
 
             for (1..str.len) |i| {

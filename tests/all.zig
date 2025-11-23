@@ -176,16 +176,6 @@ test "render test" {
         }
     };
 
-    // test file contains:
-    // <div>
-    //    ||zz .field1 zz||
-    //    <div style="||zz .field2 json zz||">
-    //      <||zz .field3 zz||>
-    //        ||zz .field4 zz||
-    //      </||zz .field3 zz||>
-    //        ||zz .field5 zz||
-    //   </div>
-    // </div>
     const TestTemplate = zemplate.Template(Test, @embedFile("test.html"));
     const allocator = std.testing.allocator;
     var ctx = Test{
@@ -209,8 +199,9 @@ test "render test" {
         \\    <section>
         \\      this is field 4
         \\    </section>
-        \\
+        \\    <script type="application/json">
         \\    [{"num":420},{"num":69}]
+        \\    </script>
         \\  </div>
         \\</div>
     ;
