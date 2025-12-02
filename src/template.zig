@@ -152,20 +152,25 @@ fn serializeField(
         \\ Options:
         \\ Json: {any}
     , .{ opts.field_name, opts.json });
-    inline for (@typeInfo(@TypeOf(parent_struct)).@"struct".fields) |f| {
-        if (std.mem.eql(u8, f.name, opts.field_name)) {
-            const field = @field(parent_struct, f.name);
-            const Ft = @TypeOf(field);
+    switch (@typeInfo(@TypeOf(parent_struct))) {
+        .@"struct" => |st| {
+            inline for (st.fields) |f| {
+                if (std.mem.eql(u8, f.name, opts.field_name)) {
+                    const field = @field(parent_struct, f.name);
+                    const Ft = @TypeOf(field);
 
-            writeType(Ft, field, writer, opts) catch |e| {
-                log.err(
-                    \\ Error: {any}
-                    \\ Field Type: 
-                ++
-                    @typeName(Ft), .{e});
-                return e;
-            };
-        }
+                    writeType(Ft, field, writer, opts) catch |e| {
+                        log.err(
+                            \\ Error: {any}
+                            \\ Field Type: 
+                        ++
+                            @typeName(Ft), .{e});
+                        return e;
+                    };
+                }
+            }
+        },
+        else => return error.CannotSerialize,
     }
 }
 
