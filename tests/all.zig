@@ -128,17 +128,23 @@ test "lexer test" {
 test "readme test" {
     // std.testing.log_level = .debug;
     const allocator = std.testing.allocator;
-    const MyContext = struct { field: []const u8 };
+    // const MyContext = struct { field: []const u8 };
 
-    const MyTemplate = zemplate.Template(MyContext,
-        \\ Hello ||zz .field zz||!
-    );
+    // const MyTemplate = zemplate.Template(MyContext,
+    //     \\ Hello ||zz .field zz||!
+    // );
 
-    var tmplt = MyTemplate.init(MyContext{ .field = "World" });
+    // var tmplt = MyTemplate.init(MyContext{ .field = "World" });
     const expected =
         \\ Hello World!
     ;
-    const render = try tmplt.render(allocator, .{ .whitespace = .indent_2 });
+    const render = try zemplate.template.render(
+        allocator,
+        .{ .field = "World" },
+        \\ Hello ||zz .field zz||!
+    ,
+        .{},
+    );
     defer allocator.free(render);
 
     if (!std.mem.eql(u8, expected, render)) {
@@ -169,6 +175,9 @@ test "render test" {
         field3: []const u8,
         field4: []u8,
         field5: []const Field5,
+        // field5: *Field5,
+        // field5: []*Field5,
+        // field5: []Field5,
 
         fn deinit(self: *@This(), a: std.mem.Allocator) void {
             self.field1.deinit(a);
@@ -176,7 +185,7 @@ test "render test" {
         }
     };
 
-    const TestTemplate = zemplate.Template(Test, @embedFile("test.html"));
+    // const TestTemplate = zemplate.Template(Test, @embedFile("test.html"));
     const allocator = std.testing.allocator;
     var ctx = Test{
         .field1 = std.ArrayList(u8).fromOwnedSlice(try allocator.dupe(u8, "this is a field")),
@@ -191,7 +200,7 @@ test "render test" {
 
     defer ctx.deinit(allocator);
 
-    var template = TestTemplate.init(ctx);
+    // var template = TestTemplate.init(ctx);
     const expected =
         \\<div>
         \\  this is a field
@@ -206,7 +215,7 @@ test "render test" {
         \\</div>
     ;
 
-    const render = try template.render(allocator, .{ .whitespace = .minified });
+    const render = try zemplate.template.render(allocator, ctx, @embedFile("test.html"), .{ .whitespace = .minified });
     defer allocator.free(render);
 
     if (!std.mem.eql(u8, expected, render)) {

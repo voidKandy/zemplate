@@ -12,15 +12,15 @@ It currently supports basic interpolation — inserting values from a context st
 ```zig
 const std = @import("std");
 const allocator = std.testing.allocator;
-
-const MyContext = struct { field: []const u8 };
-const MyTemplate = zemplate.Template(MyContext,
-    \\Hello ||zz .field zz||!
+const render = try zemplate.template.render(
+    allocator,
+    .{ .field = "World" },
+    \\ Hello ||zz .field zz||!
+,
+    .{},
 );
-var tmplt = MyTemplate.init(MyContext{ .field = "World" });
-var render = try tmplt.render(allocator);
-defer allocator.free(render);
 
+defer allocator.free(render);
 std.debug.print("{s}", .{ render.items });
 ```
 The output would be: "Hello World!"
@@ -30,13 +30,13 @@ There is also support for serializing fields as JSON, this is a newer feature an
 ```zig
 const std = @import("std");
 const allocator = std.testing.allocator;
-
-const MyContext = struct { field: struct {key: u64} };
-const MyTemplate = zemplate.Template(MyContext,
+const render = try zemplate.template.render(
+    allocator,
+    .{ .field = .{ .key = 42 } },
     \\Hello ||zz .field json zz||!
+,
+    .{},
 );
-var tmplt = MyTemplate.init(MyContext{ .field = .{ .key = 42 } });
-var render = try tmplt.render(allocator);
 defer allocator.free(render);
 
 std.debug.print("{s}", .{ render });
@@ -48,3 +48,11 @@ The output would be: "Hello { "key": 42 }!"
 
 * Fields that you would like to render in your template from your context type must be `[]const u8`, `[]u8`, or `ArrayList(u8)`, otherwise the keyword `json` must be used in order to render the field.
 * For owned fields (`[]u8` or `ArrayList(u8)`), implement a deinit method on your context.
+
+## Todos
+- [x]Associate templates with any struct, control template rendering via struct fields
+- [x]Basic string interpolation
+- [x]Json Rendering
+- [ ]Control Flow
+- [ ]Template Context method access
+- [ ]Optimization
