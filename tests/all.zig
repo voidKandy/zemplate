@@ -126,15 +126,7 @@ test "lexer test" {
 }
 
 test "readme test" {
-    // std.testing.log_level = .debug;
     const allocator = std.testing.allocator;
-    // const MyContext = struct { field: []const u8 };
-
-    // const MyTemplate = zemplate.Template(MyContext,
-    //     \\ Hello ||zz .field zz||!
-    // );
-
-    // var tmplt = MyTemplate.init(MyContext{ .field = "World" });
     const expected =
         \\ Hello World!
     ;
