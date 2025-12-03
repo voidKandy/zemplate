@@ -5,8 +5,8 @@ const ArrayList = std.ArrayList;
 const Lexer = @import("Lexer.zig");
 const Token = @import("Token.zig");
 const log = std.log.scoped(.template);
+const Error = @import("root.zig").Error;
 
-const Error = error{ SyntaxInvalid, CannotSerialize } || std.mem.Allocator.Error || std.Io.Writer.Error;
 const SerializeOptions = struct {
     field_name: []const u8,
     json: ?*const std.json.Stringify.Options = null,
@@ -24,9 +24,7 @@ pub fn render(a: std.mem.Allocator, context: anytype, template_string: []const u
     var prev_token: ?Token.Type = null;
     var current_access: ?SerializeOptions = null;
 
-    while (try lexer.nextToken(a)) |token| {
-        const dbg = try token.debugStr(a);
-        defer a.free(dbg);
+    while (try lexer.nextToken()) |token| {
         switch (token.typ) {
             .literal => {
                 try out.writer.writeAll(token.literal);

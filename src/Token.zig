@@ -11,8 +11,8 @@ pub fn create(str: []const u8, typ: Type) Self {
     return .{ .literal = str, .typ = typ };
 }
 
-pub inline fn debugStr(self: Self, a: mem.Allocator) mem.Allocator.Error![]u8 {
-    return try std.fmt.allocPrint(a,
+pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    return try writer.print(
         \\
         \\ --- .{s} ---
         \\ Literal: [{s}]

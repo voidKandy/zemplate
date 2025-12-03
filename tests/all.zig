@@ -22,8 +22,6 @@ test "looping test" {
 
 test "lexer test" {
     std.testing.log_level = .debug;
-    const a =
-        std.testing.allocator;
     const content =
         \\ <div>
         \\  ||zz .field zz||
@@ -232,19 +230,14 @@ test "lexer test" {
     };
     var lexer = Lexer.init(content[0..]);
     var i: usize = 0;
-    while (try lexer.nextToken(a)) |next| : (i += 1) {
-        const debug_str = try next.debugStr(a);
-        defer a.free(debug_str);
+    while (try lexer.nextToken()) |next| : (i += 1) {
         if (!expected[i].eql(next)) {
-            const exp_debug_str = try expected[i].debugStr(a);
-            defer a.free(exp_debug_str);
-
             std.debug.panic(
                 \\ Token {d} Expected:
-                \\ {s}
+                \\ {f}
                 \\ Got:
-                \\ {s}
-            , .{ i, exp_debug_str, debug_str });
+                \\ {f}
+            , .{ i, expected[i], next });
         }
     }
     print("LEXER Test PASSED\n", .{});

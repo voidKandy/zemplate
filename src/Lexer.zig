@@ -3,6 +3,7 @@ const log = std.log.scoped(.Lexer);
 const mem = std.mem;
 const ArrayList = std.ArrayList;
 const Token = @import("Token.zig");
+const Error = @import("root.zig").Error;
 
 input: []const u8,
 pos: usize,
@@ -30,8 +31,8 @@ pub fn init(input: []const u8) Self {
     return l;
 }
 
-pub fn debugStr(self: Self, a: mem.Allocator) mem.Allocator.Error![]u8 {
-    std.fmt.allocPrint(a,
+pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    try writer.print(
         \\ lexer:
         \\ position: {d}
         \\ next_position: {d}
@@ -87,7 +88,7 @@ fn readWord(self: *Self) usize {
     return self.pos - start_pos;
 }
 
-pub fn nextToken(self: *Self, a: mem.Allocator) mem.Allocator.Error!?Token {
+pub fn nextToken(self: *Self) Error!?Token {
     var slice_end: usize = self.pos + 1;
     var slice_start: usize = self.pos;
     var current_byte: ?u8 = null;
@@ -152,19 +153,23 @@ pub fn nextToken(self: *Self, a: mem.Allocator) mem.Allocator.Error!?Token {
     slice_start = self.pos;
 
     if (token_opt) |token| {
-        const debug_str = try token.debugStr(a);
-        defer a.free(debug_str);
         if (!token.typ.isWhitespace())
             self.prev_token = token.typ;
 
         if (token.typ == .marker_open)
             self.between_markers = true;
+
         if (token.typ == .marker_close) {
-            std.debug.assert(self.between_markers);
+            if (!self.between_markers) {
+                log.err(
+                    \\ Encountered a .marker_close token before encountering a .marker_open token
+                , .{});
+                return error.SyntaxInvalid;
+            }
             self.between_markers = false;
         }
 
-        log.debug("Got Token:\n{s}", .{debug_str});
+        log.debug("Got Token:\n{f}", .{token});
     }
     return token_opt;
 }
