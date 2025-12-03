@@ -28,7 +28,7 @@ pub fn render(a: std.mem.Allocator, context: anytype, template_string: []const u
         const dbg = try token.debugStr(a);
         defer a.free(dbg);
         switch (token.typ) {
-            .generic => {
+            .literal => {
                 try out.writer.writeAll(token.literal);
             },
             .access => {
@@ -56,7 +56,7 @@ pub fn render(a: std.mem.Allocator, context: anytype, template_string: []const u
                         else => true,
                     };
                 }) {
-                    try out.writer.writeByte(token.typ.literal().?[0]);
+                    try out.writer.writeByte(token.literal[0]);
                 }
             },
             else => {},

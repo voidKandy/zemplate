@@ -5,16 +5,33 @@ const print = std.debug.print;
 const Lexer = zemplate.Lexer;
 const Token = zemplate.Token;
 
+test "looping test" {
+    const Sub = struct { header: []const u8, p: []const u8 };
+    const content =
+        \\ <div>
+        \\  ||zz for a in .field zz||
+        \\ <h1> {{ .a.header }} </h1>
+        \\ <p> {{ .a.p }} </p>
+        \\ </div>
+    ;
+
+    _ = Sub;
+
+    _ = content;
+}
+
 test "lexer test" {
-    // std.testing.log_level = .debug;
+    std.testing.log_level = .debug;
     const a =
         std.testing.allocator;
     const content =
         \\ <div>
         \\  ||zz .field zz||
         \\  <div attribute="||zz .attr zz||"></div>
+        \\ ||zz for some in .field2 zz||
+        \\ {{ .some }}
+        \\ ||zz endfor zz||
     ;
-
     const expected = &[_]Token{
         .{
             .literal = " ",
@@ -22,7 +39,7 @@ test "lexer test" {
         },
         .{
             .literal = "<div>",
-            .typ = .generic,
+            .typ = .literal,
         },
         .{
             .literal = "\n",
@@ -70,7 +87,7 @@ test "lexer test" {
         },
         .{
             .literal = "<div",
-            .typ = .generic,
+            .typ = .literal,
         },
         .{
             .literal = " ",
@@ -78,7 +95,7 @@ test "lexer test" {
         },
         .{
             .literal = "attribute=\"",
-            .typ = .generic,
+            .typ = .literal,
         },
         .{
             .literal = "||zz",
@@ -102,7 +119,115 @@ test "lexer test" {
         },
         .{
             .literal = "\"></div>",
-            .typ = .generic,
+            .typ = .literal,
+        },
+        .{
+            .literal = "\n",
+            .typ = .newline,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "||zz",
+            .typ = .marker_open,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "for",
+            .typ = .for_open,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "some",
+            .typ = .literal,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "in",
+            .typ = .in,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = ".field2",
+            .typ = .access,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "zz||",
+            .typ = .marker_close,
+        },
+        .{
+            .literal = "\n",
+            .typ = .newline,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "{{",
+            .typ = .expression_open,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = ".some",
+            .typ = .access,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "}}",
+            .typ = .expression_close,
+        },
+        .{
+            .literal = "\n",
+            .typ = .newline,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "||zz",
+            .typ = .marker_open,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "endfor",
+            .typ = .for_close,
+        },
+        .{
+            .literal = " ",
+            .typ = .space,
+        },
+        .{
+            .literal = "zz||",
+            .typ = .marker_close,
         },
     };
     var lexer = Lexer.init(content[0..]);
@@ -126,6 +251,7 @@ test "lexer test" {
 }
 
 test "readme test" {
+    // std.testing.log_level = .debug;
     const allocator = std.testing.allocator;
     const expected =
         \\ Hello World!
