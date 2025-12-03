@@ -89,19 +89,25 @@ fn readWord(self: *Self) usize {
     log.debug("Reading word...", .{});
     const start_pos = self.pos;
     while (self.peekNext()) |ch| {
-        log.warn("next char: {c}", .{ch.*});
+        log.debug("next char: {c}", .{ch.*});
         const encountered_keyword = blk: {
             if (Token.FirstCharMap.get().get(ch.*)) |keywords| {
                 for (keywords) |kw| {
                     const window_start = self.pos;
                     const window_end = window_start + kw.len;
-                    log.warn(
+                    log.debug(
                         \\ Checking equality of: {s}
                         \\ and
                         \\ {s}
                     , .{ self.input[window_start..window_end], kw });
-                    if (std.mem.eql(u8, self.input[window_start..window_end], kw))
-                        break :blk true;
+                    if (std.mem.eql(u8, self.input[window_start..window_end], kw)) {
+                        const typ = Token.keyword_map.get(kw).?;
+                        switch (typ) {
+                            .in => break :blk std.ascii.isWhitespace((self.peekNext() orelse break :blk true).*),
+                            else => break :blk true,
+                        }
+                    }
+                    // break :blk false;
                 }
             }
             break :blk false;
@@ -113,6 +119,20 @@ fn readWord(self: *Self) usize {
             break;
     }
     return self.pos - start_pos;
+}
+
+/// progresses to next token, expecting a specific type
+/// if any whitespace tokens are encountered they are skipped
+/// returns SyntaxInvalid if next token doesn't match expected
+pub fn expectNextNonWhitespace(self: *Self, typ: Token.Type) Error!Token {
+    while (try self.nextToken()) |t| {
+        if (t.typ.isWhitespace())
+            continue;
+        if (t.typ != typ)
+            return error.SyntaxInvalid;
+        return t;
+    }
+    return error.NoToken;
 }
 
 pub fn nextToken(self: *Self) Error!?Token {
@@ -143,7 +163,7 @@ pub fn nextToken(self: *Self) Error!?Token {
                     if (is_keyword: {
                         for (1..keyword.len) |k| {
                             const peek = self.peekNextNth(k - 1) orelse break :is_keyword false;
-                            log.warn("Peek: {c}\nKeyword[k]: {c}", .{ peek.*, keyword[k] });
+                            log.debug("Peek: {c}\nKeyword[k]: {c}", .{ peek.*, keyword[k] });
                             if (peek.* != keyword[k]) break :is_keyword false;
                         }
                         break :is_keyword true;

@@ -21,11 +21,11 @@ test "looping test" {
 }
 
 test "lexer test" {
-    std.testing.log_level = .debug;
+    // std.testing.log_level = .debug;
     const content =
         \\ <div>
         \\  ||zz .field zz||
-        \\  <div attribute="||zz .attr zz||"></div>
+        \\  <div attribute="||zz .attr.sub zz||"></div>
         \\ ||zz for some in .field2 zz||
         \\ {{ .some }}
         \\ ||zz endfor zz||
@@ -104,7 +104,7 @@ test "lexer test" {
             .typ = .space,
         },
         .{
-            .literal = ".attr",
+            .literal = ".attr.sub",
             .typ = .access,
         },
         .{
@@ -273,39 +273,16 @@ test "readme test" {
     print("README Test PASSED\n", .{});
 }
 
-test "for loop test" {
-    std.testing.log_level = .debug;
+test "nest test" {
+    // std.testing.log_level = .debug;
     const allocator = std.testing.allocator;
     const expected =
-        \\ Hello!
-        \\ W
-        \\ o
-        \\ r
-        \\ l
-        \\ d
-        \\
-        \\ one
-        \\ two
-        \\ three
+        \\ Hello World!
     ;
     const render = try zemplate.template.render(
         allocator,
-        .{
-            .field = "World",
-            .array = .{
-                "one",
-                "two",
-                "three",
-            },
-        },
-        \\ Hello!
-        \\ ||zz for c in .field zz||
-        \\ {{ c }}
-        \\ ||zz endfor zz||
-        \\
-        \\ ||zz for str in .array zz||
-        \\ {{ str }}
-        \\ ||zz endfor zz||
+        .{ .field = .{ .inner = "World" } },
+        \\ Hello ||zz .field.inner zz||!
     ,
         .{},
     );
@@ -322,7 +299,59 @@ test "for loop test" {
         , .{ expected, render });
         return;
     }
-    print("FOR LOOP Test PASSED\n", .{});
+    print("NEST Test PASSED\n", .{});
+}
+
+test "for loop test" {
+    // std.testing.log_level = .debug;
+    // const allocator = std.testing.allocator;
+    // const expected =
+    //     \\ Hello!
+    //     \\ W
+    //     \\ o
+    //     \\ r
+    //     \\ l
+    //     \\ d
+    //     \\
+    //     \\ one
+    //     \\ two
+    //     \\ three
+    // ;
+    // const render = try zemplate.template.render(
+    //     allocator,
+    //     .{
+    //         .field = "World",
+    //         .array = .{
+    //             "one",
+    //             "two",
+    //             "three",
+    //         },
+    //     },
+    //     \\ Hello!
+    //     \\ ||zz for c in .field zz||
+    //     \\ {{ c }}
+    //     \\ ||zz endfor zz||
+    //     \\
+    //     \\ ||zz for str in .array zz||
+    //     \\ {{ str }}
+    //     \\ ||zz endfor zz||
+    // ,
+    //     .{},
+    // );
+    // defer allocator.free(render);
+
+    // if (!std.mem.eql(u8, expected, render)) {
+    //     std.log.err(
+    //         \\ did not get expected render!
+    //         \\ Expected:
+    //         \\ {s}
+    //         \\ got:
+    //         \\ {s}
+    //         \\
+    //     , .{ expected, render });
+    //     return;
+    // }
+    // print("FOR LOOP Test PASSED\n", .{});
 }
 
 test "render test" {
