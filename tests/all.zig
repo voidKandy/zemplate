@@ -229,6 +229,7 @@ test "lexer test" {
         },
     };
     var lexer = Lexer.init(content[0..]);
+    defer lexer.deinit();
     var i: usize = 0;
     while (try lexer.nextToken()) |next| : (i += 1) {
         if (!expected[i].eql(next)) {
@@ -270,6 +271,58 @@ test "readme test" {
         return;
     }
     print("README Test PASSED\n", .{});
+}
+
+test "for loop test" {
+    std.testing.log_level = .debug;
+    // const allocator = std.testing.allocator;
+    // const expected =
+    //     \\ Hello!
+    //     \\ W
+    //     \\ o
+    //     \\ r
+    //     \\ l
+    //     \\ d
+    //     \\
+    //     \\ one
+    //     \\ two
+    //     \\ three
+    // ;
+    // const render = try zemplate.template.render(
+    //     allocator,
+    //     .{
+    //         .field = "World",
+    //         .array = .{
+    //             "one",
+    //             "two",
+    //             "three",
+    //         },
+    //     },
+    //     \\ Hello!
+    //     \\ ||zz for c in .field zz||
+    //     \\ {|.c|}
+    //     \\ ||zz endfor zz||
+    //     \\
+    //     \\ ||zz for str in .array zz||
+    //     \\ {|.str|}
+    //     \\ ||zz endfor zz||
+    // ,
+    //     .{},
+    // );
+    // defer allocator.free(render);
+
+    // if (!std.mem.eql(u8, expected, render)) {
+    //     std.log.err(
+    //         \\ did not get expected render!
+    //         \\ Expected:
+    //         \\ {s}
+    //         \\ got:
+    //         \\ {s}
+    //         \\
+    //     , .{ expected, render });
+    //     return;
+    // }
+    // print("FOR LOOP Test PASSED\n", .{});
 }
 
 test "render test" {

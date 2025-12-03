@@ -21,6 +21,7 @@ pub fn render(a: std.mem.Allocator, context: anytype, template_string: []const u
     var out: std.io.Writer.Allocating = .init(a);
     defer out.deinit();
     var lexer = Lexer.init(template_string[0..]);
+    defer lexer.deinit();
     var prev_token: ?Token.Type = null;
     var current_access: ?SerializeOptions = null;
 
