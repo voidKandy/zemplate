@@ -13,11 +13,11 @@ const SerializeOptions = struct {
 };
 
 pub fn render(a: std.mem.Allocator, context: anytype, template_string: []const u8, json_opts: std.json.Stringify.Options) Error![]u8 {
-    log.debug(
-        \\ Attempting to render {s}:
-        \\ {any}
-        \\
-    , .{ @typeName(@TypeOf(context)), context });
+    // log.debug(
+    //     \\ Attempting to render {s}:
+    //     \\ {any}
+    //     \\
+    // , .{ @typeName(@TypeOf(context)), context });
     var out: std.io.Writer.Allocating = .init(a);
     defer out.deinit();
     var lexer = Lexer.init(template_string[0..]);
@@ -39,7 +39,7 @@ pub fn render(a: std.mem.Allocator, context: anytype, template_string: []const u
                     return error.SyntaxInvalid;
 
                 current_access.?.json = &json_opts;
-                log.debug("current access token: {any}", .{current_access.?});
+                // log.debug("current access token: {any}", .{current_access.?});
             },
             .marker_close => {
                 if (current_access) |opts|
@@ -63,7 +63,7 @@ pub fn render(a: std.mem.Allocator, context: anytype, template_string: []const u
         if (!token.typ.isWhitespace()) {
             prev_token = token.typ;
         }
-        log.debug("buffer updated:\n[{s}]", .{out.written()});
+        // log.debug("buffer updated:\n[{s}]", .{out.written()});
     }
     log.debug("finished render\n", .{});
     return try out.toOwnedSlice();
@@ -114,10 +114,9 @@ inline fn handleStruct(parent: anytype, st: std.builtin.Type.Struct, writer: *st
 
             writeType(Ft, field, writer, opts) catch |e| {
                 log.err(
+                    \\ Field Type: {s}
                     \\ Error: {any}
-                    \\ Field Type: 
-                ++
-                    @typeName(Ft), .{e});
+                , .{ @typeName(Ft), e });
                 return e;
             };
         }
@@ -129,11 +128,11 @@ fn serializeField(
     writer: *std.Io.Writer,
     opts: SerializeOptions,
 ) Error!void {
-    log.debug(
-        \\ trying to serialize field: [{s}]
-        \\ Options:
-        \\ Json: {any}
-    , .{ opts.field_name, opts.json });
+    // log.debug(
+    //     \\ trying to serialize field: [{s}]
+    //     \\ Options:
+    //     \\ Json: {any}
+    // , .{ opts.field_name, opts.json });
     const info =
         @typeInfo(@TypeOf(parent_struct));
 
@@ -144,10 +143,12 @@ fn serializeField(
         .pointer => |ptr| {
             switch (@typeInfo(ptr.child)) {
                 .@"struct" => |st| return try handleStruct(parent_struct, st, writer, opts),
-                else => log.warn("Parent type is not a pointer to struct, got: {any} ", .{@typeInfo(ptr.child)}),
+                else => {},
+                // else => log.warn("Parent type is not a pointer to struct, got: {any} ", .{@typeInfo(ptr.child)}),
             }
         },
-        else => log.warn("Parent type is not a struct, got: {any} ", .{info}),
+        else => {},
+        // else => log.warn("Parent type is not a struct, got: {any} ", .{info}),
     }
 
     return error.CannotSerialize;
