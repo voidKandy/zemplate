@@ -71,7 +71,13 @@ pub fn render(a: std.mem.Allocator, context: anytype, template_string: []const u
                     const t = prev_token orelse break :should_append true;
                     break :should_append switch (t) {
                         // whitespace within marker_open & marker_close should be ignored
-                        .access, .json, .marker_open, .in, .for_open, .for_close => false,
+                        .access,
+                        .json,
+                        .marker_open,
+                        .in,
+                        .for_open,
+                        .for_close,
+                        => false,
                         else => true,
                     };
                 }) {
@@ -80,15 +86,14 @@ pub fn render(a: std.mem.Allocator, context: anytype, template_string: []const u
             },
 
             .for_open => {
-                const next = try lexer.expectNextNonWhitespace(.literal);
-                const variable_name = next.literal;
+                const variable_name = (try lexer.expectNextNonWhitespace(.literal)).literal;
                 _ = try lexer.expectNextNonWhitespace(.in);
                 const field = try lexer.expectNextNonWhitespace(.access);
                 _ = try lexer.expectNextNonWhitespace(.marker_close);
                 const array_len = try arrayFieldLen(context, field.literal[1..]);
                 const start_pos = lexer.pos;
 
-                log.warn(
+                log.debug(
                     \\ For loop opened
                     \\ variable name: {s}
                     \\ field {s}
@@ -106,7 +111,7 @@ pub fn render(a: std.mem.Allocator, context: anytype, template_string: []const u
                 var in_expression = false;
                 for (0..array_len) |i| {
                     while (try lexer.nextToken()) |tok| {
-                        log.warn(
+                        log.debug(
                             \\On token: {any}
                         , .{tok.typ});
                         switch (tok.typ) {
@@ -144,7 +149,7 @@ pub fn render(a: std.mem.Allocator, context: anytype, template_string: []const u
                             },
                             .access => {
                                 if (!in_expression or current_scope.current_access != null) return error.SyntaxInvalid;
-                                log.warn(
+                                log.debug(
                                     \\ EXPRESSION: {any}
                                     \\ ACCESS: {any}
                                     \\ LITERAL: {s}
@@ -162,18 +167,22 @@ pub fn render(a: std.mem.Allocator, context: anytype, template_string: []const u
                                 try current_scope.writer.writer.writeAll(tok.literal),
                         }
                     }
-                    log.warn("Got to end of loop {d}", .{i});
                     lexer.pos = current_scope.start_pos;
                 }
 
                 const slice = try current_scope.writer.toOwnedSlice();
-                log.warn(
-                    \\ Writing to writer:
-                    \\ {s}
-                , .{slice});
-                try out.writer.writeAll(slice);
-
                 defer a.free(slice);
+                log.debug(
+                    \\ Writing to outer writer:
+                    \\ [{s}]
+                    \\ Current state:
+                    \\ [{s}]
+                , .{ slice, out.written() });
+                try out.writer.writeAll(slice);
+                log.debug(
+                    \\ AFTER
+                    \\[{s}]
+                , .{out.written()});
             },
 
             else => {},
@@ -190,7 +199,7 @@ pub fn render(a: std.mem.Allocator, context: anytype, template_string: []const u
 
 inline fn writeType(T: type, inst: anytype, writer: *std.Io.Writer, opts: SerializeOptions) Error!void {
     if (@TypeOf(inst) != T) @panic(@typeName(T) ++ " =! " ++ @typeName(@TypeOf(inst)));
-    log.warn("Trying writetype: {s}", .{@typeName(T)});
+    log.debug("Trying writetype: {s}", .{@typeName(T)});
 
     if (opts.json) |o|
         return try std.json.Stringify.value(inst, o.*, writer);
@@ -198,7 +207,7 @@ inline fn writeType(T: type, inst: anytype, writer: *std.Io.Writer, opts: Serial
     const info = @typeInfo(T);
     switch (info) {
         .array => |a| {
-            log.warn(
+            log.debug(
                 \\ array type
             , .{});
             if (a.child == u8) {
@@ -218,7 +227,7 @@ inline fn writeType(T: type, inst: anytype, writer: *std.Io.Writer, opts: Serial
                 return;
             }
 
-            log.warn("array child is not u8, got {s}", .{@typeName(a.child)});
+            log.debug("array child is not u8, got {s}", .{@typeName(a.child)});
             if (opts.index) |i| {
                 var new_opts = opts;
                 new_opts.index = null;
@@ -226,18 +235,18 @@ inline fn writeType(T: type, inst: anytype, writer: *std.Io.Writer, opts: Serial
             }
         },
         .pointer => |ptr| {
-            log.warn(
+            log.debug(
                 \\ pointer type
             , .{});
             if (ptr.child == u8) {
-                log.warn("size: {any}", .{ptr.size});
+                log.debug("size: {any}", .{ptr.size});
                 switch (ptr.size) {
                     .slice => {
                         if (opts.index) |i| {
-                            log.warn("Byte: {c}", .{inst[i]});
+                            log.debug("Byte: {c}", .{inst[i]});
                             try writer.writeByte(inst[i]);
                         } else {
-                            log.warn("Bytes: {s}", .{inst});
+                            log.debug("Bytes: {s}", .{inst});
                             try writer.writeAll(inst);
                         }
 
@@ -248,12 +257,12 @@ inline fn writeType(T: type, inst: anytype, writer: *std.Io.Writer, opts: Serial
                 }
             }
 
-            log.warn("pointer child is not u8, got {s}", .{@typeName(ptr.child)});
+            log.debug("pointer child is not u8, got {s}", .{@typeName(ptr.child)});
 
             if (ptr.size == .one) return try writeType(ptr.child, inst.*, writer, opts);
         },
         .@"struct" => {
-            log.warn(
+            log.debug(
                 \\ struct type
             , .{});
             if (T == ArrayList(u8))
@@ -263,7 +272,7 @@ inline fn writeType(T: type, inst: anytype, writer: *std.Io.Writer, opts: Serial
                     writer.writeAll(inst.items);
         },
         else => {
-            log.warn("No branch for handling {s}", .{@typeName(T)});
+            log.debug("No branch for handling {s}", .{@typeName(T)});
             return error.CannotSerialize;
         },
     }
@@ -277,6 +286,12 @@ inline fn writeStructField(parent: anytype, st: std.builtin.Type.Struct, writer:
             \\ Parent should be some struct, not 
         ++ @typeName(@TypeOf(parent))),
     }
+
+    log.debug(
+        \\ Trying to write struct field
+        \\ Struct: {s}
+        \\ Field Name: {s}
+    , .{ @typeName(@TypeOf(parent)), opts.field_name });
 
     var field_name = opts.field_name;
     var nested_field: ?[]const u8 = null;
@@ -336,13 +351,6 @@ fn writeField(
 ) Error!void {
     const info =
         @typeInfo(@TypeOf(parent_struct));
-    log.warn(
-        \\ trying to serialize field: {s}
-        \\ TYPE: {s}
-        \\ Options: 
-        \\ json: {any}
-        \\ index: {any}
-    , .{ opts.field_name, @typeName(@TypeOf(parent_struct)), opts.json, opts.index });
 
     switch (info) {
         .@"struct" => |st| {
@@ -353,19 +361,19 @@ fn writeField(
                 .@"struct" => |st| {
                     switch (ptr.size) {
                         .one => return try writeStructField(parent_struct.*, st, writer, opts),
-                        else => log.warn("child type is a struct but did not expect many item pointer: {any}", .{ptr.size}),
+                        else => log.debug("child type is a struct but did not expect many item pointer: {any}", .{ptr.size}),
                     }
                 },
                 .array => |_| {
                     return try writeType(ptr.child, parent_struct.*, writer, opts);
                 },
-                else => log.warn("Parent type is not a pointer to struct, got: {any} ", .{@typeInfo(ptr.child)}),
+                else => log.debug("Parent type is not a pointer to struct, got: {any} ", .{@typeInfo(ptr.child)}),
             }
         },
         .array => |_| {
             return try writeType(@TypeOf(parent_struct), parent_struct, writer, opts);
         },
-        else => log.warn("Parent type is not a struct, got: {any} ", .{info}),
+        else => log.debug("Parent type is not a struct, got: {any} ", .{info}),
     }
 
     return error.CannotSerialize;

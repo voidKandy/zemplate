@@ -301,15 +301,18 @@ test "for loop test" {
     const allocator = std.testing.allocator;
     const expected =
         \\ Hello!
-        \\ W
-        \\ o
-        \\ r
-        \\ l
-        \\ d
+        \\W
+        \\o
+        \\r
+        \\l
+        \\d
+        \\ 
         \\
-        \\ one
-        \\ two
-        \\ three
+        \\one
+        \\two
+        \\three
+        \\ 
+        \\
     ;
     const render = try zemplate.template.render(
         allocator,
@@ -322,13 +325,12 @@ test "for loop test" {
             },
         },
         \\ Hello!
-        \\ ||zz for c in .field zz||
+        \\||zz for c in .field zz||
         \\ {{ .c }}
-        \\ ||zz endfor zz||
-        \\
-        \\ ||zz for str in .array zz||
+        \\||zz endfor zz||
+        \\||zz for str in .array zz||
         \\ {{ .str }}
-        \\ ||zz endfor zz||
+        \\||zz endfor zz||
     ,
         .{},
     );
@@ -338,11 +340,19 @@ test "for loop test" {
         std.log.err(
             \\ did not get expected render!
             \\ Expected:
-            \\ {s}
+            \\ [{s}]
             \\ got:
-            \\ {s}
+            \\ [{s}]
             \\
         , .{ expected, render });
+        for ([_][]const u8{ expected, render }) |str| {
+            for (0..str.len) |i| {
+                std.log.err(
+                    \\[{c}]
+                , .{str[i]});
+            }
+            std.log.err("DONE PRINTING\n", .{});
+        }
         return;
     }
     print(
