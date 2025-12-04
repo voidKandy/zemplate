@@ -10,6 +10,8 @@ const Error = @import("root.zig").Error;
 const SerializeOptions = struct {
     field_name: []const u8,
     json: ?*const std.json.Stringify.Options = null,
+    /// in case you want to access an nth item of an array field
+    index: ?usize = null,
 };
 
 const ForScope = struct {
@@ -87,39 +89,33 @@ pub fn render(a: std.mem.Allocator, context: anytype, template_string: []const u
                 };
 
                 var in_expression = false;
-                for (0..array_len) |_| {
+                for (0..array_len) |i| {
                     while (try lexer.nextToken()) |tok| {
                         switch (tok.typ) {
                             .expression_open => {
                                 in_expression = true;
                             },
                             .expression_close => {
-                                // const access = current_scope.current_access orelse return error.SyntaxInvalid;
-                                // const amt_periods = std.mem.count(u8, access.field_name, ".");
-                                // if (amt_periods == 1) {
-                                //     var split = std.mem.splitScalar(u8, access.field_name, '.');
-                                //     _ = split.first();
-                                //     const field_access = @field(context, access.field_name);
-                                //     const subfield_name = split.next().?;
-                                //     const inner = @field(field_access, subfield_name);
-                                //     var opts = current_scope.current_access.?;
-                                //     opts.field_name = subfield_name;
-                                //     try writeField(inner, current_scope.writer, opts);
-                                // } else if (amt_periods == 0) {
-                                //     try writeField(context, current_scope.writer, current_scope.current_access.?);
-                                // } else {
-                                //     log.err(
-                                //         \\ zemplate currently only supports 1 layer of field access
-                                //     , .{});
-                                //     return error.SyntaxInvalid;
-                                // }
+                                if (current_scope.current_access) |opts| {
+                                    switch (@typeInfo(@TypeOf(context))) {
+                                        .@"struct" => |st| {
+                                            inline for (st.fields) |f| {
+                                                if (std.mem.eql(u8, f.name, current_scope.field_name)) {
+                                                    const parent = @field(context, f.name);
+                                                    try writeField(parent, &out.writer, opts);
+                                                }
+                                            }
+                                        },
+                                        else => return null,
+                                    }
+                                }
+                                current_scope.current_access = null;
                                 in_expression = false;
                             },
                             .access => {
                                 if (!in_expression or current_scope.current_access != null) return error.SyntaxInvalid;
-                                current_scope.current_access = .{ .field_name = tok.literal[1..] };
-                                // if (tok.literal[1..] == current_scope.identifier)
-                                // current_scope.?.current_access = .{ .field_name = tok.literal[1..] };
+                                const len_id = current_scope.identifier.len;
+                                current_scope.current_access = .{ .field_name = tok.literal[len_id + 1 ..], .index = i };
                             },
                             .json => {
                                 if (!in_expression or current_scope.current_access == null) return error.SyntaxInvalid;
@@ -150,20 +146,32 @@ inline fn writeType(T: type, inst: anytype, writer: *std.Io.Writer, opts: Serial
     if (@TypeOf(inst) != T) @panic(@typeName(T) ++ " =! " ++ @typeName(@TypeOf(inst)));
     log.debug("Trying writetype: {s}", .{@typeName(T)});
 
+    if (opts.json) |o|
+        return try std.json.Stringify.value(inst, o.*, writer);
+
     const info = @typeInfo(T);
     switch (info) {
         .array => |a| {
             if (a.child == u8) {
-                return try if (a.sentinel()) |sent|
-                    writer.writeAll(inst[0.. :sent])
+                const bytes =
+                    if (a.sentinel()) |sent|
+                        inst[0.. :sent]
+                    else
+                        inst[0..];
+
+                return try if (opts.index) |i|
+                    writer.writeByte(bytes[i])
                 else
-                    writer.writeAll(inst[0..]);
+                    writer.writeAll(bytes);
             }
         },
         .pointer => |ptr| {
             if (ptr.child == u8) {
                 switch (ptr.size) {
-                    .slice => return try writer.writeAll(inst),
+                    .slice => return try if (opts.index) |i|
+                        writer.writeByte(inst[i])
+                    else
+                        writer.writeAll(inst),
                     .one => return try writeType(ptr.child, inst.*, writer, opts),
                     else => return error.InvalidPointerType,
                 }
@@ -172,27 +180,49 @@ inline fn writeType(T: type, inst: anytype, writer: *std.Io.Writer, opts: Serial
             if (ptr.size == .one) return try writeType(ptr.child, inst.*, writer, opts);
         },
         .@"struct" => {
-            if (T == ArrayList(u8)) return try writer.writeAll(inst.items);
+            if (T == ArrayList(u8))
+                return try if (opts.index) |i|
+                    writer.writeByte(inst.items[i])
+                else
+                    writer.writeAll(inst.items);
         },
         else => {},
     }
 
-    if (opts.json) |o|
-        return try std.json.Stringify.value(inst, o.*, writer);
-
     return error.CannotSerialize;
 }
 
+inline fn getStructFieldName(comptime parent: anytype, field_name: []const u8) ?[]const u8 {
+    switch (@typeInfo(@TypeOf(parent))) {
+        .@"struct" => |st| {
+            inline for (st.fields) |f| {
+                if (std.mem.eql(u8, f.name, field_name)) return f.name;
+            }
+        },
+        else => return null,
+    }
+}
+
 inline fn writeStruct(parent: anytype, st: std.builtin.Type.Struct, writer: *std.Io.Writer, opts: SerializeOptions) Error!void {
+    switch (@typeInfo(@TypeOf(parent))) {
+        .@"struct" => {},
+        else => @compileError(
+            \\ Incorrect parent type passed to writeStruct
+            \\ Parent should be some struct, not 
+        ++ @typeName(@TypeOf(parent))),
+    }
+
     var field_name = opts.field_name;
     var nested_field: ?[]const u8 = null;
     if (std.mem.lastIndexOfScalar(u8, opts.field_name, '.')) |i| {
+        log.debug(
+            \\ Detecting nested field access: {s}
+        , .{opts.field_name});
         nested_field = field_name[i + 1 ..];
         field_name = field_name[0..i];
     }
 
     inline for (st.fields) |f| {
-        // if (outer_field) |fname| {
         if (std.mem.eql(u8, f.name, field_name)) {
             const field = @field(parent, f.name);
             const Ft = @TypeOf(field);
@@ -252,7 +282,12 @@ fn writeField(
         },
         .pointer => |ptr| {
             switch (@typeInfo(ptr.child)) {
-                .@"struct" => |st| return try writeStruct(parent_struct, st, writer, opts),
+                .@"struct" => |st| {
+                    switch (ptr.size) {
+                        .one => return try writeStruct(parent_struct.*, st, writer, opts),
+                        else => log.warn("child type is a struct but did not expect many item pointer: {any}", .{ptr.size}),
+                    }
+                },
                 else => log.warn("Parent type is not a pointer to struct, got: {any} ", .{@typeInfo(ptr.child)}),
             }
         },
