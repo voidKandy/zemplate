@@ -5,21 +5,6 @@ const print = std.debug.print;
 const Lexer = zemplate.Lexer;
 const Token = zemplate.Token;
 
-test "looping test" {
-    const Sub = struct { header: []const u8, p: []const u8 };
-    const content =
-        \\ <div>
-        \\  ||zz for a in .field zz||
-        \\ <h1> {{ .a.header }} </h1>
-        \\ <p> {{ .a.p }} </p>
-        \\ </div>
-    ;
-
-    _ = Sub;
-
-    _ = content;
-}
-
 test "lexer test" {
     // std.testing.log_level = .debug;
     const content =
@@ -241,7 +226,10 @@ test "lexer test" {
             , .{ i, expected[i], next });
         }
     }
-    print("LEXER Test PASSED\n", .{});
+    print(
+        \\
+        \\ LEXER Test PASSED
+    , .{});
 }
 
 test "readme test" {
@@ -270,7 +258,10 @@ test "readme test" {
         , .{ expected, render });
         return;
     }
-    print("README Test PASSED\n", .{});
+    print(
+        \\
+        \\ README Test PASSED
+    , .{});
 }
 
 test "nest test" {
@@ -299,7 +290,10 @@ test "nest test" {
         , .{ expected, render });
         return;
     }
-    print("NEST Test PASSED\n", .{});
+    print(
+        \\
+        \\ NEST Test PASSED
+    , .{});
 }
 
 test "for loop test" {
@@ -321,7 +315,7 @@ test "for loop test" {
         allocator,
         .{
             .field = "World",
-            .array = .{
+            .array = [_][]const u8{
                 "one",
                 "two",
                 "three",
@@ -329,11 +323,11 @@ test "for loop test" {
         },
         \\ Hello!
         \\ ||zz for c in .field zz||
-        \\ {{ c }}
+        \\ {{ .c }}
         \\ ||zz endfor zz||
         \\
         \\ ||zz for str in .array zz||
-        \\ {{ str }}
+        \\ {{ .str }}
         \\ ||zz endfor zz||
     ,
         .{},
@@ -351,7 +345,10 @@ test "for loop test" {
         , .{ expected, render });
         return;
     }
-    print("FOR LOOP Test PASSED\n", .{});
+    print(
+        \\
+        \\ FOR LOOP Test PASSED
+    , .{});
 }
 
 test "render test" {
@@ -423,5 +420,8 @@ test "render test" {
         return;
     }
 
-    print("Render Test PASSED\n", .{});
+    print(
+        \\
+        \\ Render Test PASSED
+    , .{});
 }

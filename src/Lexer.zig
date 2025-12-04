@@ -24,13 +24,13 @@ pub fn init(input: []const u8) Self {
 
     var iter = Token.FirstCharMap.get().iterator();
     while (iter.next()) |e| {
-        log.debug(
+        log.info(
             \\ {c}:
         , .{
             e.key_ptr.*,
         });
         for (e.value_ptr.*) |v| {
-            log.debug(
+            log.info(
                 \\ {s} 
             , .{
                 v,
@@ -86,16 +86,15 @@ pub fn peekNextNth(self: *Self, nth: usize) ?*const u8 {
 /// Reads characters until a whitespace is encountered
 /// returns the amount of characters read
 fn readWord(self: *Self) usize {
-    log.debug("Reading word...", .{});
     const start_pos = self.pos;
     while (self.peekNext()) |ch| {
-        log.debug("next char: {c}", .{ch.*});
+        log.info("next char: {c}", .{ch.*});
         const encountered_keyword = blk: {
             if (Token.FirstCharMap.get().get(ch.*)) |keywords| {
                 for (keywords) |kw| {
                     const window_start = self.pos;
                     const window_end = window_start + kw.len;
-                    log.debug(
+                    log.info(
                         \\ Checking equality of: {s}
                         \\ and
                         \\ {s}
@@ -140,14 +139,14 @@ pub fn nextToken(self: *Self) Error!?Token {
     var slice_start: usize = self.pos;
 
     const token_opt: ?Token = outer: while (self.progress()) |c| : (slice_end += 1) {
-        log.debug("Current char: {c}", .{c});
+        log.info("Current char: {c}", .{c});
         switch (c) {
             ' ' => break :outer Token.create(" ", .space),
             '\n' => break :outer Token.create("\n", .newline),
             else => if (Token.FirstCharMap.get().get(c)) |keywords| {
                 for (0..keywords.len) |i| {
                     const keyword = keywords[i];
-                    log.debug(
+                    log.info(
                         \\ Potential keyword: {s}
                     , .{keyword});
 
@@ -163,7 +162,7 @@ pub fn nextToken(self: *Self) Error!?Token {
                     if (is_keyword: {
                         for (1..keyword.len) |k| {
                             const peek = self.peekNextNth(k - 1) orelse break :is_keyword false;
-                            log.debug("Peek: {c}\nKeyword[k]: {c}", .{ peek.*, keyword[k] });
+                            log.info("Peek: {c}\nKeyword[k]: {c}", .{ peek.*, keyword[k] });
                             if (peek.* != keyword[k]) break :is_keyword false;
                         }
                         break :is_keyword true;
@@ -218,7 +217,7 @@ pub fn nextToken(self: *Self) Error!?Token {
             self.between_markers = false;
         }
 
-        log.debug("Got Token:\n{f}", .{token});
+        log.info("Got Token:\n{f}", .{token});
     }
     return token_opt;
 }
