@@ -36,7 +36,6 @@ pub const Type = enum {
     expression_close,
     for_open,
     for_close,
-    in,
     json,
 
     pub inline fn isWhitespace(self: @This()) bool {
@@ -54,7 +53,6 @@ pub const keyword_map = std.StaticStringMap(Type).initComptime(.{
     .{ "}}", .expression_close },
     .{ "for", .for_open },
     .{ "endfor", .for_close },
-    .{ "in", .in },
     .{ "json", .json },
 });
 

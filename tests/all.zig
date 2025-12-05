@@ -5,14 +5,110 @@ const print = std.debug.print;
 const Lexer = zemplate.Lexer;
 const Token = zemplate.Token;
 
+test "custom iterator" {
+    const OtherStruct = struct {
+        other_string: []const u8,
+    };
+    const TestStruct = struct {
+        other: ?OtherStruct,
+        string: []const u8,
+        number: u64,
+
+        fn eql(self: @This(), other: @This()) bool {
+            return (std.mem.eql(u8, self.string, other.string) and
+                (self.other == null and other.other == null or std.mem.eql(u8, self.other.?.other_string, other.other.?.other_string)) and
+                self.number == other.number);
+        }
+
+        pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+            try writer.print(
+                \\ string: {s}
+                \\ number: {d}
+                \\ other: {any}
+            , .{ self.string, self.number, self.other });
+        }
+    };
+    const expected_strings =
+        &[_][]const u8{
+            "one",
+            "two",
+            "three",
+        };
+
+    const expected_structs =
+        &[_]TestStruct{
+            .{
+                .string = "alpha zebra",
+                .number = 42,
+                .other = .{ .other_string = "inner-one" },
+            },
+            .{
+                .string = "moon quartz",
+                .number = 987654321,
+                .other = .{ .other_string = "inner-two" },
+            },
+            .{
+                .string = "river echo",
+                .number = 1337,
+                .other = .{ .other_string = "inner-three" },
+            },
+            .{
+                .string = "sky lantern",
+                .number = 555555,
+                .other = .{ .other_string = "inner-four" },
+            },
+            .{
+                .string = "ghost ember",
+                .number = 777777777,
+                .other = .{ .other_string = "inner-five" },
+            },
+        };
+    var parent = .{
+        .strings = expected_strings,
+        .structs = expected_structs,
+    };
+
+    {
+        var iter = zemplate.iterate.StructFieldIterator(@TypeOf(parent), "strings").fromParentPtr(&parent);
+        var i: usize = 0;
+        while (iter.next()) |n| : (i += 1) {
+            if (!std.mem.eql(u8, n, expected_strings[i])) {
+                std.log.err(
+                    \\ Expected:
+                    \\ {s}
+                    \\ Got:
+                    \\ {s}
+                , .{ expected_strings[i], n });
+                @panic("failed");
+            }
+        }
+    }
+    {
+        var iter = zemplate.iterate.StructFieldIterator(@TypeOf(parent), "structs").fromParentPtr(&parent);
+        var i: usize = 0;
+        while (iter.next()) |n| : (i += 1) {
+            if (!n.eql(expected_structs[i])) {
+                std.log.err(
+                    \\ Expected:
+                    \\ {f}
+                    \\ Got:
+                    \\ {f}
+                , .{ expected_structs[i], n });
+                @panic("failed");
+            }
+        }
+    }
+    print("ITERATOR Test PASSED", .{});
+}
+
 test "lexer test" {
     // std.testing.log_level = .debug;
     const content =
         \\ <div>
         \\  ||zz .field zz||
         \\  <div attribute="||zz .attr.sub zz||"></div>
-        \\ ||zz for some in .field2 zz||
-        \\ {{ .some }}
+        \\ ||zz for .field2 zz||
+        \\ {{.}}
         \\ ||zz endfor zz||
     ;
     const expected = &[_]Token{
@@ -129,22 +225,6 @@ test "lexer test" {
             .typ = .space,
         },
         .{
-            .literal = "some",
-            .typ = .literal,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "in",
-            .typ = .in,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
             .literal = ".field2",
             .typ = .access,
         },
@@ -169,16 +249,8 @@ test "lexer test" {
             .typ = .expression_open,
         },
         .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = ".some",
+            .literal = ".",
             .typ = .access,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
         },
         .{
             .literal = "}}",
@@ -238,9 +310,14 @@ test "readme test" {
     const expected =
         \\ Hello World!
     ;
-    const render = try zemplate.template.render(
-        allocator,
+    const TestTmpl =
+        zemplate.template.Template(struct { field: []const u8 });
+
+    var tmpl = TestTmpl.init(
         .{ .field = "World" },
+    );
+    const render = try tmpl.render(
+        allocator,
         \\ Hello ||zz .field zz||!
     ,
         .{},
@@ -270,9 +347,10 @@ test "nest test" {
     const expected =
         \\ Hello World!
     ;
-    const render = try zemplate.template.render(
+    const Tmpl = zemplate.template.Template(struct { field: struct { inner: []const u8 } });
+    var tmpl = Tmpl.init(.{ .field = .{ .inner = "World" } });
+    const render = try tmpl.render(
         allocator,
-        .{ .field = .{ .inner = "World" } },
         \\ Hello ||zz .field.inner zz||!
     ,
         .{},
@@ -313,23 +391,35 @@ test "for loop test" {
         \\three
         \\ 
         \\
+        \\subfield
+        \\subfield2
+        \\ 
+        \\
     ;
-    const render = try zemplate.template.render(
+    const SubType =
+        struct { inner_field: []const u8 };
+    const Tmpl = zemplate.template.Template(struct { outer_field: []const u8, array: []const []const u8, structs: []const SubType });
+    var tmpl = Tmpl.init(
+        .{ .outer_field = "World", .array = &[_][]const u8{
+            "one",
+            "two",
+            "three",
+        }, .structs = &[_]SubType{
+            .{ .inner_field = "subfield" },
+            .{ .inner_field = "subfield2" },
+        } },
+    );
+    const render = try tmpl.render(
         allocator,
-        .{
-            .field = "World",
-            .array = [_][]const u8{
-                "one",
-                "two",
-                "three",
-            },
-        },
         \\ Hello!
-        \\||zz for c in .field zz||
-        \\ {{ .c }}
+        \\||zz for .outer_field zz||
+        \\ {{ . }}
         \\||zz endfor zz||
-        \\||zz for str in .array zz||
-        \\ {{ .str }}
+        \\||zz for .array zz||
+        \\ {{ . }}
+        \\||zz endfor zz||
+        \\||zz for .structs zz||
+        \\ {{ .inner_field }}
         \\||zz endfor zz||
     ,
         .{},
@@ -414,8 +504,10 @@ test "render test" {
         \\  </div>
         \\</div>
     ;
+    const Tmpl = zemplate.template.Template(Test);
+    var tmpl = Tmpl.init(ctx);
 
-    const render = try zemplate.template.render(allocator, ctx, @embedFile("test.html"), .{ .whitespace = .minified });
+    const render = try tmpl.render(allocator, @embedFile("test.html"), .{ .whitespace = .minified });
     defer allocator.free(render);
 
     if (!std.mem.eql(u8, expected, render)) {

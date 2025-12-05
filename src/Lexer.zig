@@ -24,13 +24,13 @@ pub fn init(input: []const u8) Self {
 
     var iter = Token.FirstCharMap.get().iterator();
     while (iter.next()) |e| {
-        log.info(
+        log.debug(
             \\ {c}:
         , .{
             e.key_ptr.*,
         });
         for (e.value_ptr.*) |v| {
-            log.info(
+            log.debug(
                 \\ {s} 
             , .{
                 v,
@@ -88,13 +88,13 @@ pub fn peekNextNth(self: *Self, nth: usize) ?*const u8 {
 fn readWord(self: *Self) usize {
     const start_pos = self.pos;
     while (self.peekNext()) |ch| {
-        log.info("next char: {c}", .{ch.*});
+        log.debug("next char: {c}", .{ch.*});
         const encountered_keyword = blk: {
             if (Token.FirstCharMap.get().get(ch.*)) |keywords| {
                 for (keywords) |kw| {
                     const window_start = self.pos;
                     const window_end = window_start + kw.len;
-                    log.info(
+                    log.debug(
                         \\ Checking equality of: {s}
                         \\ and
                         \\ {s}
@@ -102,7 +102,7 @@ fn readWord(self: *Self) usize {
                     if (std.mem.eql(u8, self.input[window_start..window_end], kw)) {
                         const typ = Token.keyword_map.get(kw).?;
                         switch (typ) {
-                            .in => break :blk std.ascii.isWhitespace((self.peekNext() orelse break :blk true).*),
+                            // .in => break :blk std.ascii.isWhitespace((self.peekNext() orelse break :blk true).*),
                             else => break :blk true,
                         }
                     }
@@ -127,8 +127,13 @@ pub fn expectNextNonWhitespace(self: *Self, typ: Token.Type) Error!Token {
     while (try self.nextToken()) |t| {
         if (t.typ.isWhitespace())
             continue;
-        if (t.typ != typ)
+        if (t.typ != typ) {
+            log.err(
+                \\ Expected {any} token
+                \\ Got {any}
+            , .{ typ, t.typ });
             return error.SyntaxInvalid;
+        }
         return t;
     }
     return error.NoToken;
@@ -139,14 +144,14 @@ pub fn nextToken(self: *Self) Error!?Token {
     var slice_start: usize = self.pos;
 
     const token_opt: ?Token = outer: while (self.progress()) |c| : (slice_end += 1) {
-        log.info("Current char: {c}", .{c});
+        log.debug("Current char: {c}", .{c});
         switch (c) {
             ' ' => break :outer Token.create(" ", .space),
             '\n' => break :outer Token.create("\n", .newline),
             else => if (Token.FirstCharMap.get().get(c)) |keywords| {
                 for (0..keywords.len) |i| {
                     const keyword = keywords[i];
-                    log.info(
+                    log.debug(
                         \\ Potential keyword: {s}
                     , .{keyword});
 
@@ -162,7 +167,7 @@ pub fn nextToken(self: *Self) Error!?Token {
                     if (is_keyword: {
                         for (1..keyword.len) |k| {
                             const peek = self.peekNextNth(k - 1) orelse break :is_keyword false;
-                            log.info("Peek: {c}\nKeyword[k]: {c}", .{ peek.*, keyword[k] });
+                            log.debug("Peek: {c}\nKeyword[k]: {c}", .{ peek.*, keyword[k] });
                             if (peek.* != keyword[k]) break :is_keyword false;
                         }
                         break :is_keyword true;
@@ -217,7 +222,7 @@ pub fn nextToken(self: *Self) Error!?Token {
             self.between_markers = false;
         }
 
-        log.info("Got Token:\n{f}", .{token});
+        log.debug("Got Token:\n{f}", .{token});
     }
     return token_opt;
 }
