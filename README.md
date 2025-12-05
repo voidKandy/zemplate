@@ -48,10 +48,10 @@ The output would be: "Hello { "key": 42 }!"
 * For owned fields (`[]u8` or `ArrayList(u8)`), implement a deinit method on your context.
 
 ## Todos
-- [x]Associate templates with any struct, control template rendering via struct fields
-- [x]Basic string interpolation
-- [x]Json Rendering
-- [x]For loops
-- [ ]If statements
-- [ ]Template Context method access
-- [ ]Optimization
+- [x] Associate templates with any struct, control template rendering via struct fields
+- [x] Basic string interpolation
+- [x] Json Rendering
+- [x] For loops
+- [ ] If statements
+- [ ] Template Context method access
+- [ ] Optimization
