@@ -12,13 +12,12 @@ It currently supports basic interpolation — inserting values from a context st
 ```zig
 const std = @import("std");
 const allocator = std.testing.allocator;
-const render = try zemplate.template.render(
-    allocator,
-    .{ .field = "World" },
+const TestTmpl = zemplate.Template(struct { field: []const u8 });
+var tmpl = TestTmpl.init(.{ .field = "World" });
+
+const render = try tmpl.render(allocator,
     \\ Hello ||zz .field zz||!
-,
-    .{},
-);
+, .{});
 
 defer allocator.free(render);
 std.debug.print("{s}", .{ render.items });
@@ -30,13 +29,12 @@ There is also support for serializing fields as JSON, this is a newer feature an
 ```zig
 const std = @import("std");
 const allocator = std.testing.allocator;
-const render = try zemplate.template.render(
+const TestTmpl = zemplate.Template(struct { field: struct{key: u32} });
+var tmpl = TestTmpl.init(.{ .field = .{ .key = 42 } });
+const render = try tmpl.render(
     allocator,
-    .{ .field = .{ .key = 42 } },
     \\Hello ||zz .field json zz||!
-,
-    .{},
-);
+, .{});
 defer allocator.free(render);
 
 std.debug.print("{s}", .{ render });
@@ -53,6 +51,7 @@ The output would be: "Hello { "key": 42 }!"
 - [x]Associate templates with any struct, control template rendering via struct fields
 - [x]Basic string interpolation
 - [x]Json Rendering
-- [ ]Control Flow
+- [x]For loops
+- [ ]If statements
 - [ ]Template Context method access
 - [ ]Optimization

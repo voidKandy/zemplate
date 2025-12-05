@@ -358,15 +358,10 @@ test "readme test" {
     const TestTmpl =
         zemplate.Template(struct { field: []const u8 });
 
-    var tmpl = TestTmpl.init(
-        .{ .field = "World" },
-    );
-    const render = try tmpl.render(
-        allocator,
+    var tmpl = TestTmpl.init(.{ .field = "World" });
+    const render = try tmpl.render(allocator,
         \\ Hello ||zz .field zz||!
-    ,
-        .{},
-    );
+    , .{});
     defer allocator.free(render);
 
     if (!std.mem.eql(u8, expected, render)) {
