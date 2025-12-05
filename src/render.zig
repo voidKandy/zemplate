@@ -1,11 +1,11 @@
 const std = @import("std");
 const root = @import("root.zig");
-pub const parse = root.parse;
+const parse = root.parse;
 const ArrayList = std.ArrayList;
 const Lexer = @import("Lexer.zig");
 const Type = std.builtin.Type;
 const Token = @import("Token.zig");
-const log = std.log.scoped(.template);
+const log = std.log.scoped(.render);
 const Error = @import("root.zig").Error;
 
 const SerializeOptions = struct {
@@ -18,22 +18,21 @@ const SerializeOptions = struct {
 const ForScope = struct {
     arena: std.heap.ArenaAllocator,
     writer: std.Io.Writer.Allocating,
-    /// is a type returned by iterate.StructFieldIterator
-    // iterator: *anyopaque,
-    // / The identifier assigned to the field being accessed
-    identifier: []const u8 = "idk",
-    // /// The name of the actual field being accessed
+    /// The name of the actual field being accessed
     iterated_field_name: []const u8,
+    /// Functions exactly like `prev_token` in the outermost `render` method
+    prev_token: Token.Type,
     start_pos: usize,
-    current_index: usize = 0,
     closed: bool = false,
     current_access: ?SerializeOptions = null,
 
     pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print(
-            \\ identifier: {s}
             \\ field name: {s}
-        , .{ self.identifier, self.iterated_field_name });
+            \\ prev token: {any}
+            \\ start pos: {d}
+            \\ closed: {any}
+        , .{ self.iterated_field_name, self.prev_token, self.start_pos, self.closed });
     }
 
     pub fn deinit(self: *@This()) void {
@@ -163,14 +162,12 @@ pub fn Template(comptime Context: type) type {
             return .{ .context = ctx };
         }
 
-        pub fn handleNext(
-            a: std.mem.Allocator,
+        fn handleNext(
             next: anytype,
             lexer: *Lexer,
             scope: *ForScope,
             json_opts: std.json.Stringify.Options,
         ) Error!void {
-            _ = a;
             var in_expression = false;
             while (try lexer.nextToken()) |tok| {
                 log.debug(
@@ -178,12 +175,14 @@ pub fn Template(comptime Context: type) type {
                 , .{tok.typ});
                 switch (tok.typ) {
                     .for_close => scope.closed = true,
-                    .marker_close => if (scope.closed) break,
+                    .marker_close => if (scope.closed) return,
                     .expression_open => {
-                        if (in_expression)
-                            return error.SyntaxInvalid
-                        else
-                            in_expression = true;
+                        if (in_expression) {
+                            log.err(
+                                \\ Encountered an .expression_open token inside of an expression
+                            , .{});
+                            return error.SyntaxInvalid;
+                        } else in_expression = true;
                     },
                     .expression_close => {
                         if (scope.current_access) |*opts| {
@@ -211,11 +210,21 @@ pub fn Template(comptime Context: type) type {
                             }
                         }
                         scope.current_access = null;
-                        try scope.writer.writer.writeByte('\n');
                         in_expression = false;
                     },
                     .access => {
-                        if (!in_expression or scope.current_access != null) return error.SyntaxInvalid;
+                        if (!in_expression) {
+                            log.err(
+                                \\ Encountered .access token outside of an expression
+                            , .{});
+                            return error.SyntaxInvalid;
+                        }
+                        if (scope.current_access != null) {
+                            log.err(
+                                \\ Encountered .access token in loop before resolving previous
+                            , .{});
+                            return error.SyntaxInvalid;
+                        }
                         log.debug(
                             \\ EXPRESSION: {any}
                             \\ ACCESS: {any}
@@ -230,15 +239,42 @@ pub fn Template(comptime Context: type) type {
                         };
                     },
                     .json => {
-                        if (!in_expression or scope.current_access == null) return error.SyntaxInvalid;
+                        if (!in_expression) {
+                            log.err(
+                                \\ Encountered .json token outside of an expression
+                            , .{});
+                            return error.SyntaxInvalid;
+                        }
+                        if (scope.current_access == null) {
+                            log.err(
+                                \\ Encountered .json token before an .access token
+                            , .{});
+                            return error.SyntaxInvalid;
+                        }
                         scope.current_access.?.json = &json_opts;
                     },
 
-                    else => if (!in_expression and tok.typ == .literal)
-                        try scope.writer.writer.writeAll(tok.literal),
+                    else => if (!in_expression and (tok.typ == .literal or tok.typ.isWhitespace())) {
+                        if (should_append: {
+                            if (!tok.typ.isWhitespace()) break :should_append true;
+                            break :should_append switch (scope.prev_token) {
+                                .expression_open,
+                                .access,
+                                .json,
+                                .marker_open,
+                                .for_close,
+                                => false,
+                                .marker_close => tok.typ == .space,
+                                else => true,
+                            };
+                        }) {
+                            if (tok.typ.isWhitespace()) log.debug("Appending {any} after {any}", .{ tok.typ, scope.prev_token });
+                            try scope.writer.writer.writeAll(tok.literal);
+                        }
+                    },
                 }
+                if (!tok.typ.isWhitespace()) scope.prev_token = tok.typ;
             }
-            lexer.pos = scope.start_pos;
         }
 
         fn handleForOpen(self: *Self, lexer: *Lexer, a: std.mem.Allocator, json_opts: std.json.Stringify.Options) Error![]u8 {
@@ -250,6 +286,7 @@ pub fn Template(comptime Context: type) type {
                 .writer = std.Io.Writer.Allocating.init(a),
                 .arena = std.heap.ArenaAllocator.init(a),
                 .start_pos = start_pos,
+                .prev_token = .marker_close,
                 .iterated_field_name = field.literal[1..],
             };
 
@@ -264,14 +301,22 @@ pub fn Template(comptime Context: type) type {
 
             defer current_scope.deinit();
 
+            var true_position: ?usize = null;
             while (iter_wrapper.?.nextFunc(iter)) |n| {
                 inline for (iterable_fields_arr) |f| {
                     if (std.mem.eql(u8, f.name, current_scope.iterated_field_name)) {
                         const next = @field(n, f.name);
-                        try handleNext(a, next, lexer, &current_scope, json_opts);
+                        try handleNext(next, lexer, &current_scope, json_opts);
+                        current_scope.prev_token = .marker_close;
+                        if (true_position == null) true_position = lexer.pos;
+                        lexer.pos = current_scope.start_pos;
                     }
                 }
             }
+            log.debug(
+                \\ FOR LOOP CLOSED
+            , .{});
+            lexer.pos = true_position.?;
 
             return current_scope.writer.toOwnedSlice();
         }
@@ -295,13 +340,22 @@ pub fn Template(comptime Context: type) type {
                         try out.writer.writeAll(token.literal);
                     },
                     .access => {
-                        if (current_access) |_| return error.SyntaxInvalid;
+                        if (current_access) |t| {
+                            log.err(
+                                \\ Encountered .access token for {s} before resolving previous: {s}
+                            , .{ token.literal, t.field_name });
+                            return error.SyntaxInvalid;
+                        }
                         log.debug("ACCESS TOKEN: {s}", .{token.literal});
                         current_access = .{ .field_name = token.literal[1..] };
                     },
                     .json => {
-                        if (current_access == null)
+                        if (current_access == null) {
+                            log.err(
+                                \\ Encountered .json token before an .access token
+                            , .{});
                             return error.SyntaxInvalid;
+                        }
 
                         current_access.?.json = &json_opts;
                         log.debug("current access token: {any}", .{current_access.?});
@@ -316,7 +370,7 @@ pub fn Template(comptime Context: type) type {
                             };
                         current_access = null;
                     },
-                    .newline, .space => {
+                    .newline, .space, .tab => {
                         if (should_append: {
                             const t = prev_token orelse break :should_append true;
                             break :should_append switch (t) {
@@ -330,6 +384,7 @@ pub fn Template(comptime Context: type) type {
                                 else => true,
                             };
                         }) {
+                            log.debug("Appending {any} after {any}", .{ token.typ, prev_token });
                             try out.writer.writeByte(token.literal[0]);
                         }
                     },
@@ -337,21 +392,21 @@ pub fn Template(comptime Context: type) type {
                     .for_open => {
                         const slice = try self.handleForOpen(&lexer, a, json_opts);
                         defer a.free(slice);
+                        prev_token = .marker_close;
                         log.debug(
                             \\ Writing to outer writer:
                             \\ [{s}]
-                            \\ Current state:
-                            \\ [{s}]
-                        , .{ slice, out.written() });
+                        , .{slice});
                         try out.writer.writeAll(slice);
+                        // we cant have prev_token updated, so we continue
+                        continue;
                     },
 
                     else => {},
                 }
 
-                if (!token.typ.isWhitespace()) {
-                    prev_token = token.typ;
-                }
+                if (!token.typ.isWhitespace()) prev_token = token.typ;
+
                 log.debug("buffer updated:\n[{s}]", .{out.written()});
             }
             log.debug("finished render\n", .{});

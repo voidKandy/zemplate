@@ -148,12 +148,10 @@ pub fn nextToken(self: *Self) Error!?Token {
         switch (c) {
             ' ' => break :outer Token.create(" ", .space),
             '\n' => break :outer Token.create("\n", .newline),
+            '\t' => break :outer Token.create("\t", .tab),
             else => if (Token.FirstCharMap.get().get(c)) |keywords| {
                 for (0..keywords.len) |i| {
                     const keyword = keywords[i];
-                    log.debug(
-                        \\ Potential keyword: {s}
-                    , .{keyword});
 
                     const typ = Token.keyword_map.get(keyword) orelse @panic("malformed FirstCharMap");
                     switch (typ) {
@@ -161,6 +159,7 @@ pub fn nextToken(self: *Self) Error!?Token {
                             continue :outer,
                         .for_open, .for_close => if (self.prev_token orelse continue :outer != .marker_open)
                             continue :outer,
+
                         else => {},
                     }
 
@@ -195,8 +194,7 @@ pub fn nextToken(self: *Self) Error!?Token {
                 .expression_open => if (slice[0] == '.') break :blk .access,
                 else => {},
             };
-
-            break :blk Token.keyword_map.get(slice) orelse .literal;
+            break :blk .literal;
         };
 
         break :outer Token.create(self.input[slice_start..slice_end], tok);
@@ -206,6 +204,7 @@ pub fn nextToken(self: *Self) Error!?Token {
     slice_start = self.pos;
 
     if (token_opt) |token| {
+        log.debug("Potential Token: {f}", .{token});
         if (!token.typ.isWhitespace())
             self.prev_token = token.typ;
 

@@ -27,6 +27,7 @@ pub inline fn eql(self: Self, other: Self) bool {
 
 pub const Type = enum {
     space,
+    tab,
     newline,
     literal,
     access,
@@ -40,7 +41,7 @@ pub const Type = enum {
 
     pub inline fn isWhitespace(self: @This()) bool {
         return switch (self) {
-            .space, .newline => true,
+            .space, .newline, .tab => true,
             else => false,
         };
     }

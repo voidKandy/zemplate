@@ -1,5 +1,6 @@
 const std = @import("std");
-pub const template = @import("template.zig");
+const render = @import("render.zig");
+pub const Template = render.Template;
 pub const iterate = @import("iterate.zig");
 pub const Lexer = @import("Lexer.zig");
 pub const Token = @import("Token.zig");
