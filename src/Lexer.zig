@@ -3,11 +3,14 @@ const log = std.log.scoped(.Lexer);
 const mem = std.mem;
 const ArrayList = std.ArrayList;
 const Token = @import("Token.zig");
+const Error = @import("root.zig").Error;
 
 input: []const u8,
 pos: usize,
-// keeps track of the last NON WHITESPACE token
+/// keeps track of the last NON WHITESPACE token
 prev_token: ?Token.Type = null,
+/// Marks if we are currently between marker_open and marker_close
+between_markers: bool = false,
 
 const Self = @This();
 
@@ -16,11 +19,34 @@ pub fn init(input: []const u8) Self {
         .input = input,
         .pos = 0,
     };
+
+    Token.FirstCharMap.init() catch @panic("failed to initialize first char map");
+
+    var iter = Token.FirstCharMap.get().iterator();
+    while (iter.next()) |e| {
+        log.debug(
+            \\ {c}:
+        , .{
+            e.key_ptr.*,
+        });
+        for (e.value_ptr.*) |v| {
+            log.debug(
+                \\ {s} 
+            , .{
+                v,
+            });
+        }
+    }
+
     return l;
 }
 
-pub fn debugStr(self: Self, a: mem.Allocator) mem.Allocator.Error![]u8 {
-    std.fmt.allocPrint(a,
+pub fn deinit(_: Self) void {
+    Token.FirstCharMap.deinit();
+}
+
+pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    try writer.print(
         \\ lexer:
         \\ position: {d}
         \\ next_position: {d}
@@ -48,73 +74,154 @@ pub fn peekNext(self: *Self) ?*const u8 {
     return &self.input[self.pos];
 }
 
-pub fn nextToken(self: *Self, a: mem.Allocator) mem.Allocator.Error!?Token {
-    var slice_end: usize = self.pos + 1;
-    var slice_start: usize = self.pos;
-    var current_byte: ?u8 = null;
+/// returns an optional pointer to the next nth char
+/// nth 0 would just pass the very next
+pub fn peekNextNth(self: *Self, nth: usize) ?*const u8 {
+    if (self.pos + nth >= self.input.len) {
+        return null;
+    }
+    return &self.input[self.pos + nth];
+}
 
-    const token_opt: ?Token = outer: while (self.progress()) |c| : (slice_end += 1) {
-        log.info("char: {c}\npos: {d}\nstart: {d}\nend: {d}\n", .{ c, self.pos, slice_start, slice_end });
-        const possible_match: ?Token.Type =
-            switch (c) {
-                Token.Type.marker_close.literal().?[0] => .marker_close,
-                Token.Type.marker_open.literal().?[0] => .marker_open,
-                Token.Type.json.literal().?[0] => .json,
-                Token.Type.newline.literal().?[0] => break :outer Token.create(self.input[slice_start..slice_end], .newline),
-                Token.Type.space.literal().?[0] => break :outer Token.create(self.input[slice_start..slice_end], .space),
-
-                else => null,
-            };
-
-        if (possible_match) |tok| {
-            if (tok == .json)
-                if (self.prev_token orelse continue :outer != .access)
-                    continue :outer;
-            const str = tok.literal().?;
-
-            for (1..str.len) |i| {
-                if (!b: {
-                    const next = self.peekNext() orelse break :b false;
-                    break :b next.* == str[i];
-                }) continue :outer;
-
-                current_byte = self.progress();
-                slice_end += 1;
-            }
-            if (mem.eql(u8, self.input[slice_start..slice_end], tok.literal().?))
-                break :outer Token.create(self.input[slice_start..slice_end], tok);
-        }
-
-        const tok: Token.Type = blk: {
-            if (self.prev_token) |prev| {
-                switch (prev) {
-                    // access tokens are always after marker_open and always start with a '.'
-                    .marker_open => if (self.input[slice_start..slice_end][0] == '.') break :blk .access,
-                    else => {},
+/// Reads characters until a whitespace is encountered
+/// returns the amount of characters read
+fn readWord(self: *Self) usize {
+    const start_pos = self.pos;
+    while (self.peekNext()) |ch| {
+        log.debug("next char: {c}", .{ch.*});
+        const encountered_keyword = blk: {
+            if (Token.FirstCharMap.get().get(ch.*)) |keywords| {
+                for (keywords) |kw| {
+                    const window_start = self.pos;
+                    const window_end = window_start + kw.len;
+                    log.debug(
+                        \\ Checking equality of: {s}
+                        \\ and
+                        \\ {s}
+                    , .{ self.input[window_start..window_end], kw });
+                    if (std.mem.eql(u8, self.input[window_start..window_end], kw)) {
+                        const typ = Token.keyword_map.get(kw).?;
+                        switch (typ) {
+                            // .in => break :blk std.ascii.isWhitespace((self.peekNext() orelse break :blk true).*),
+                            else => break :blk true,
+                        }
+                    }
+                    // break :blk false;
                 }
             }
-            break :blk .generic;
+            break :blk false;
         };
 
-        if (self.peekNext() == null or
-            self.peekNext().?.* == Token.Type.space.literal().?[0] or
-            self.peekNext().?.* == Token.Type.newline.literal().?[0] or
-            self.peekNext().?.* == Token.Type.json.literal().?[0] or
-            self.peekNext().?.* == Token.Type.marker_open.literal().?[0] or
-            self.peekNext().?.* == Token.Type.marker_close.literal().?[0])
-            break :outer Token.create(self.input[slice_start..slice_end], tok);
+        if (!std.ascii.isWhitespace(ch.*) and !encountered_keyword)
+            _ = self.progress().?
+        else
+            break;
+    }
+    return self.pos - start_pos;
+}
+
+/// progresses to next token, expecting a specific type
+/// if any whitespace tokens are encountered they are skipped
+/// returns SyntaxInvalid if next token doesn't match expected
+pub fn expectNextNonWhitespace(self: *Self, typ: Token.Type) Error!Token {
+    while (try self.nextToken()) |t| {
+        if (t.typ.isWhitespace())
+            continue;
+        if (t.typ != typ) {
+            log.err(
+                \\ Expected {any} token
+                \\ Got {any}
+            , .{ typ, t.typ });
+            return error.SyntaxInvalid;
+        }
+        return t;
+    }
+    return error.NoToken;
+}
+
+pub fn nextToken(self: *Self) Error!?Token {
+    var slice_end: usize = self.pos + 1;
+    var slice_start: usize = self.pos;
+
+    const token_opt: ?Token = outer: while (self.progress()) |c| : (slice_end += 1) {
+        log.debug("Current char: {c}", .{c});
+        switch (c) {
+            ' ' => break :outer Token.create(" ", .space),
+            '\n' => break :outer Token.create("\n", .newline),
+            '\t' => break :outer Token.create("\t", .tab),
+            else => if (Token.FirstCharMap.get().get(c)) |keywords| {
+                for (0..keywords.len) |i| {
+                    const keyword = keywords[i];
+
+                    const typ = Token.keyword_map.get(keyword) orelse @panic("malformed FirstCharMap");
+                    switch (typ) {
+                        .json => if (self.prev_token orelse continue :outer != .access)
+                            continue :outer,
+                        .for_open, .for_close => if (self.prev_token orelse continue :outer != .marker_open)
+                            continue :outer,
+
+                        else => {},
+                    }
+
+                    if (is_keyword: {
+                        for (1..keyword.len) |k| {
+                            const peek = self.peekNextNth(k - 1) orelse break :is_keyword false;
+                            log.debug("Peek: {c}\nKeyword[k]: {c}", .{ peek.*, keyword[k] });
+                            if (peek.* != keyword[k]) break :is_keyword false;
+                        }
+                        break :is_keyword true;
+                    }) {
+                        for (1..keyword.len) |_| {
+                            _ = self.progress();
+                            slice_end += 1;
+                        }
+
+                        break :outer Token.create(self.input[slice_start..slice_end], typ);
+                    }
+                }
+            },
+        }
+
+        if (self.peekNext() != null)
+            slice_end += self.readWord();
+
+        const tok: Token.Type = blk: {
+            const slice = self.input[slice_start..slice_end];
+            // access tokens are always between markers and always start with a '.'
+            // might be after an expression_open {{ or between markers
+            if (self.between_markers and slice[0] == '.') break :blk .access;
+            if (self.prev_token) |prev| switch (prev) {
+                .expression_open => if (slice[0] == '.') break :blk .access,
+                else => {},
+            };
+            break :blk .literal;
+        };
+
+        break :outer Token.create(self.input[slice_start..slice_end], tok);
     } else {
         break :outer null;
     };
     slice_start = self.pos;
 
     if (token_opt) |token| {
-        const debug_str = try token.debugStr(a);
-        defer a.free(debug_str);
-        if (!token.typ.isWhitespace()) {
+        log.debug("Potential Token: {f}", .{token});
+        if (!token.typ.isWhitespace())
             self.prev_token = token.typ;
+
+        if (token.typ == .marker_open)
+            self.between_markers = true;
+
+        if (token.typ == .marker_close) {
+            if (!self.between_markers) {
+                log.err(
+                    \\ Encountered a .marker_close token before encountering a .marker_open token
+                , .{});
+                return error.SyntaxInvalid;
+            }
+            self.between_markers = false;
         }
-        log.debug("Got Token:\n{s}", .{debug_str});
+
+        log.debug("Got Token:\n{f}", .{token});
     }
     return token_opt;
 }
