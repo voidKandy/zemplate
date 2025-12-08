@@ -144,7 +144,6 @@ pub fn nextToken(self: *Self) Error!?Token {
     var slice_start: usize = self.pos;
 
     const token_opt: ?Token = outer: while (self.progress()) |c| : (slice_end += 1) {
-        log.debug("Current char: {c}", .{c});
         switch (c) {
             ' ' => break :outer Token.create(" ", .space),
             '\n' => break :outer Token.create("\n", .newline),
@@ -166,7 +165,6 @@ pub fn nextToken(self: *Self) Error!?Token {
                     if (is_keyword: {
                         for (1..keyword.len) |k| {
                             const peek = self.peekNextNth(k - 1) orelse break :is_keyword false;
-                            log.debug("Peek: {c}\nKeyword[k]: {c}", .{ peek.*, keyword[k] });
                             if (peek.* != keyword[k]) break :is_keyword false;
                         }
                         break :is_keyword true;

@@ -47,7 +47,7 @@ pub fn Template(comptime Context: type) type {
         .@"struct" => |s| {
             var amt_cannot: usize = 0;
             inline for (s.fields) |f| {
-                if (root.iterate.unwrapIterableChild(f.type) == null) amt_cannot += 1;
+                if (root.iterate.UnwrapIterableChild(f.type) == null) amt_cannot += 1;
             }
             break :blk s.fields.len - amt_cannot;
         },
@@ -58,7 +58,7 @@ pub fn Template(comptime Context: type) type {
         var tmp: [AMT_ITERABLE_FIELDS]Type.StructField = undefined;
         var i: usize = 0;
         inline for (context_type_info.@"struct".fields) |f| {
-            if (root.iterate.unwrapIterableChild(f.type) != null) {
+            if (root.iterate.UnwrapIterableChild(f.type) != null) {
                 tmp[i] = f;
                 i += 1;
             }
@@ -74,7 +74,7 @@ pub fn Template(comptime Context: type) type {
         var efields: [AMT_ITERABLE_FIELDS]Type.EnumField = undefined;
 
         inline for (iterable_fields_arr, &ufields, &efields, 0..) |iter_fld, *unfld, *enfld, j| {
-            const Typ = root.iterate.unwrapIterableChild(iter_fld.type).?;
+            const Typ = root.iterate.UnwrapIterableChild(iter_fld.type).?;
             unfld.* = Type.UnionField{
                 .alignment = @alignOf(Typ),
                 .name = iter_fld.name,

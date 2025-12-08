@@ -466,25 +466,6 @@ test "for loop test" {
     defer allocator.free(render);
     logDiff(expected, render);
 
-    // if (!std.mem.eql(u8, expected, render)) {
-    //     std.log.err(
-    //         \\ did not get expected render!
-    //         \\ Expected:
-    //         \\ [{s}]
-    //         \\ got:
-    //         \\ [{s}]
-    //         \\
-    //     , .{ expected, render });
-    // for ([_][]const u8{ expected, render }) |str| {
-    //     for (0..str.len) |i| {
-    //         std.log.err(
-    //             \\[{c}]
-    //         , .{str[i]});
-    //     }
-    //     std.log.err("DONE PRINTING\n", .{});
-    // }
-    //     return;
-    // }
     print(
         \\
         \\ FOR LOOP Test PASSED

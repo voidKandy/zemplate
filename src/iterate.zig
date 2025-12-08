@@ -4,14 +4,14 @@ const root = @import("root.zig");
 const eql = std.mem.eql;
 const expect = std.testing.expect;
 
-pub inline fn unwrapIterableChild(comptime T: type) ?type {
+pub inline fn UnwrapIterableChild(comptime T: type) ?type {
     const info = @typeInfo(T);
 
     return switch (info) {
         .array => |a| a.child,
         .pointer => |p| switch (p.size) {
             .slice => p.child,
-            else => unwrapIterableChild(p.child),
+            else => UnwrapIterableChild(p.child),
         },
         else => {
             if (!@inComptime())
@@ -38,7 +38,7 @@ pub fn StructFieldIterator(comptime Parent: type, comptime field_name: []const u
 
     const field_type_info = @typeInfo(FieldType);
 
-    const ItemType = unwrapIterableChild(FieldType) orelse @compileError(@typeName(Parent) ++ " is not iterable");
+    const ItemType = UnwrapIterableChild(FieldType) orelse @compileError(@typeName(Parent) ++ " is not iterable");
 
     return struct {
         instance: FieldType,
