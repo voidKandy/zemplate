@@ -1,351 +1,45 @@
+comptime {
+    _ = @import("control_flow.zig");
+    _ = @import("data.zig");
+    _ = @import("lexing.zig");
+}
+
 const std = @import("std");
 const zemplate = @import("zemplate");
 const print = std.debug.print;
-
 const Lexer = zemplate.Lexer;
 const Token = zemplate.Token;
 
-test "custom iterator" {
-    const OtherStruct = struct {
-        other_string: []const u8,
-    };
-    const TestStruct = struct {
-        other: ?OtherStruct,
-        string: []const u8,
-        number: u64,
-
-        fn eql(self: @This(), other: @This()) bool {
-            return (std.mem.eql(u8, self.string, other.string) and
-                (self.other == null and other.other == null or std.mem.eql(u8, self.other.?.other_string, other.other.?.other_string)) and
-                self.number == other.number);
-        }
-
-        pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
-            try writer.print(
-                \\ string: {s}
-                \\ number: {d}
-                \\ other: {any}
-            , .{ self.string, self.number, self.other });
-        }
-    };
-    const expected_strings =
-        &[_][]const u8{
-            "one",
-            "two",
-            "three",
-        };
-
-    const expected_structs =
-        &[_]TestStruct{
-            .{
-                .string = "alpha zebra",
-                .number = 42,
-                .other = .{ .other_string = "inner-one" },
-            },
-            .{
-                .string = "moon quartz",
-                .number = 987654321,
-                .other = .{ .other_string = "inner-two" },
-            },
-            .{
-                .string = "river echo",
-                .number = 1337,
-                .other = .{ .other_string = "inner-three" },
-            },
-            .{
-                .string = "sky lantern",
-                .number = 555555,
-                .other = .{ .other_string = "inner-four" },
-            },
-            .{
-                .string = "ghost ember",
-                .number = 777777777,
-                .other = .{ .other_string = "inner-five" },
-            },
-        };
-    var parent = .{
-        .strings = expected_strings,
-        .structs = expected_structs,
-    };
-
-    {
-        var iter = zemplate.iterate.StructFieldIterator(@TypeOf(parent), "strings").fromParentPtr(&parent);
-        var i: usize = 0;
-        while (iter.next()) |n| : (i += 1) {
-            if (!std.mem.eql(u8, n, expected_strings[i])) {
-                std.log.err(
-                    \\ Expected:
-                    \\ {s}
-                    \\ Got:
-                    \\ {s}
-                , .{ expected_strings[i], n });
-                @panic("failed");
-            }
-        }
-    }
-    {
-        var iter = zemplate.iterate.StructFieldIterator(@TypeOf(parent), "structs").fromParentPtr(&parent);
-        var i: usize = 0;
-        while (iter.next()) |n| : (i += 1) {
-            if (!n.eql(expected_structs[i])) {
-                std.log.err(
-                    \\ Expected:
-                    \\ {f}
-                    \\ Got:
-                    \\ {f}
-                , .{ expected_structs[i], n });
-                @panic("failed");
-            }
-        }
-    }
-    print("ITERATOR Test PASSED", .{});
-}
-
-test "lexer test" {
-    // std.testing.log_level = .debug;
-    const content =
-        \\ <div>
-        \\  ||zz .field zz||
-        \\  <div attribute="||zz .attr.sub zz||"></div>
-        \\ <p> for too long </p>
-        \\ ||zz for .field2 zz||
-        \\ {{.}}
-        \\ ||zz endfor zz||
+test "nested access test" {
+    const allocator = std.testing.allocator;
+    const expected =
+        \\ Hello World!
     ;
-    const expected = &[_]Token{
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "<div>",
-            .typ = .literal,
-        },
-        .{
-            .literal = "\n",
-            .typ = .newline,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "||zz",
-            .typ = .marker_open,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = ".field",
-            .typ = .access,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "zz||",
-            .typ = .marker_close,
-        },
-        .{
-            .literal = "\n",
-            .typ = .newline,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "<div",
-            .typ = .literal,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "attribute=\"",
-            .typ = .literal,
-        },
-        .{
-            .literal = "||zz",
-            .typ = .marker_open,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = ".attr.sub",
-            .typ = .access,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "zz||",
-            .typ = .marker_close,
-        },
-        .{
-            .literal = "\"></div>",
-            .typ = .literal,
-        },
-        .{
-            .literal = "\n",
-            .typ = .newline,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "<p>",
-            .typ = .literal,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "for",
-            .typ = .literal,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "too",
-            .typ = .literal,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "long",
-            .typ = .literal,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "</p>",
-            .typ = .literal,
-        },
-        .{
-            .literal = "\n",
-            .typ = .newline,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "||zz",
-            .typ = .marker_open,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "for",
-            .typ = .for_open,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = ".field2",
-            .typ = .access,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "zz||",
-            .typ = .marker_close,
-        },
-        .{
-            .literal = "\n",
-            .typ = .newline,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "{{",
-            .typ = .expression_open,
-        },
-        .{
-            .literal = ".",
-            .typ = .access,
-        },
-        .{
-            .literal = "}}",
-            .typ = .expression_close,
-        },
-        .{
-            .literal = "\n",
-            .typ = .newline,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "||zz",
-            .typ = .marker_open,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "endfor",
-            .typ = .for_close,
-        },
-        .{
-            .literal = " ",
-            .typ = .space,
-        },
-        .{
-            .literal = "zz||",
-            .typ = .marker_close,
-        },
-    };
-    var lexer = Lexer.init(content[0..]);
-    defer lexer.deinit();
-    var i: usize = 0;
-    while (try lexer.nextToken()) |next| : (i += 1) {
-        if (!expected[i].eql(next)) {
-            std.debug.panic(
-                \\ Token {d} Expected:
-                \\ {f}
-                \\ Got:
-                \\ {f}
-            , .{ i, expected[i], next });
-        }
+    const Tmpl = zemplate.Template(struct { field: struct { inner: []const u8 } });
+    var tmpl = Tmpl.init(.{ .field = .{ .inner = "World" } });
+    const render = try tmpl.render(
+        allocator,
+        \\ Hello ||zz .field.inner zz||!
+    ,
+        .{},
+    );
+    defer allocator.free(render);
+
+    if (!std.mem.eql(u8, expected, render)) {
+        std.log.err(
+            \\ did not get expected render!
+            \\ Expected:
+            \\ {s}
+            \\ got:
+            \\ {s}
+            \\
+        , .{ expected, render });
+        return;
     }
     print(
         \\
-        \\ LEXER Test PASSED
+        \\ NEST Test PASSED
+        \\
     , .{});
 }
 
@@ -378,97 +72,7 @@ test "readme test" {
     print(
         \\
         \\ README Test PASSED
-    , .{});
-}
-
-test "nest test" {
-    // std.testing.log_level = .debug;
-    const allocator = std.testing.allocator;
-    const expected =
-        \\ Hello World!
-    ;
-    const Tmpl = zemplate.Template(struct { field: struct { inner: []const u8 } });
-    var tmpl = Tmpl.init(.{ .field = .{ .inner = "World" } });
-    const render = try tmpl.render(
-        allocator,
-        \\ Hello ||zz .field.inner zz||!
-    ,
-        .{},
-    );
-    defer allocator.free(render);
-
-    if (!std.mem.eql(u8, expected, render)) {
-        std.log.err(
-            \\ did not get expected render!
-            \\ Expected:
-            \\ {s}
-            \\ got:
-            \\ {s}
-            \\
-        , .{ expected, render });
-        return;
-    }
-    print(
         \\
-        \\ NEST Test PASSED
-    , .{});
-}
-
-test "for loop test" {
-    // std.testing.log_level = .debug;
-    const allocator = std.testing.allocator;
-    const expected =
-        \\ Hello!
-        \\ W
-        \\ o
-        \\ r
-        \\ l
-        \\ d
-        \\
-        \\ one
-        \\ two
-        \\ three
-        \\
-        \\ subfield
-        \\ subfield2
-        \\
-        \\
-    ;
-    const SubType =
-        struct { inner_field: []const u8 };
-    const Tmpl = zemplate.Template(struct { outer_field: []const u8, array: []const []const u8, structs: []const SubType });
-    var tmpl = Tmpl.init(
-        .{ .outer_field = "World", .array = &[_][]const u8{
-            "one",
-            "two",
-            "three",
-        }, .structs = &[_]SubType{
-            .{ .inner_field = "subfield" },
-            .{ .inner_field = "subfield2" },
-        } },
-    );
-    const render = try tmpl.render(
-        allocator,
-        \\ Hello!
-        \\||zz for .outer_field zz||
-        \\ {{.}}
-        \\||zz endfor zz||
-        \\||zz for .array zz||
-        \\ {{ . }}
-        \\||zz endfor zz||
-        \\||zz for .structs zz||
-        \\ {{ .inner_field }}
-        \\||zz endfor zz||
-        \\
-    ,
-        .{},
-    );
-    defer allocator.free(render);
-    logDiff(expected, render);
-
-    print(
-        \\
-        \\ FOR LOOP Test PASSED
     , .{});
 }
 
@@ -561,10 +165,11 @@ test "render test" {
     print(
         \\
         \\ Render Test PASSED
+        \\
     , .{});
 }
 
-fn logDiff(expected: []const u8, actual: []const u8) void {
+pub fn logDiff(expected: []const u8, actual: []const u8) void {
     if (std.mem.indexOfDiff(u8, expected, actual)) |idx| {
         const start = @max(idx, @as(usize, 10)) - 10;
         const end_expected = @min(expected.len, idx + 10);
@@ -584,10 +189,6 @@ fn logDiff(expected: []const u8, actual: []const u8) void {
         std.log.err("Actual   char: '{c}' (byte {d})", .{
             actual[idx], actual[idx],
         });
-
-        // Show fully escaped forms to catch invisible differences
-        // std.log.err("Expected escaped: \"{s}\"", .{std.format.fmt(expected)});
-        // std.log.err("Actual   escaped: \"{s}\"", .{std.zig.fmtEscapes(actual)});
 
         return;
     }
