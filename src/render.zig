@@ -2,6 +2,7 @@ const std = @import("std");
 const root = @import("root.zig");
 const parse = root.parse;
 const ArrayList = std.ArrayList;
+const Allocator = std.mem.Allocator;
 const Lexer = @import("Lexer.zig");
 const Type = std.builtin.Type;
 const Token = @import("Token.zig");
@@ -42,119 +43,7 @@ const ForScope = struct {
 };
 
 pub fn Template(comptime Context: type) type {
-    const context_type_info = @typeInfo(Context);
-    const AMT_ITERABLE_FIELDS = blk: switch (context_type_info) {
-        .@"struct" => |s| {
-            var amt_cannot: usize = 0;
-            inline for (s.fields) |f| {
-                if (root.iterate.UnwrapIterableChild(f.type) == null) amt_cannot += 1;
-            }
-            break :blk s.fields.len - amt_cannot;
-        },
-        else => @compileError("Cannot create template from " ++ @typeName(Context)),
-    };
-
-    const iterable_fields_arr: [AMT_ITERABLE_FIELDS]Type.StructField = blk: {
-        var tmp: [AMT_ITERABLE_FIELDS]Type.StructField = undefined;
-        var i: usize = 0;
-        inline for (context_type_info.@"struct".fields) |f| {
-            if (root.iterate.UnwrapIterableChild(f.type) != null) {
-                tmp[i] = f;
-                i += 1;
-            }
-        }
-        break :blk tmp;
-    };
-
-    const meta_fields: struct {
-        un_fields: [AMT_ITERABLE_FIELDS]Type.UnionField,
-        en_fields: [AMT_ITERABLE_FIELDS]Type.EnumField,
-    } = blk: {
-        var ufields: [AMT_ITERABLE_FIELDS]Type.UnionField = undefined;
-        var efields: [AMT_ITERABLE_FIELDS]Type.EnumField = undefined;
-
-        inline for (iterable_fields_arr, &ufields, &efields, 0..) |iter_fld, *unfld, *enfld, j| {
-            const Typ = root.iterate.UnwrapIterableChild(iter_fld.type).?;
-            unfld.* = Type.UnionField{
-                .alignment = @alignOf(Typ),
-                .name = iter_fld.name,
-                .type = Typ,
-            };
-            enfld.* = Type.EnumField{
-                .value = j,
-                .name = iter_fld.name,
-            };
-        }
-        break :blk .{ .un_fields = ufields, .en_fields = efields };
-    };
-
-    const Tag =
-        @Type(Type{
-            .@"enum" = .{
-                .fields = &meta_fields.en_fields,
-                .tag_type = u32,
-                .decls = &[_]Type.Declaration{},
-                .is_exhaustive = true,
-            },
-        });
-    const Union =
-        @Type(Type{
-            .@"union" = .{
-                .fields = &meta_fields.un_fields,
-                .decls = &[_]Type.Declaration{},
-                .tag_type = Tag,
-                .layout = .auto,
-            },
-        });
-
-    const CreateFieldIterFunc = *const fn (std.mem.Allocator, *Context) *anyopaque;
-    const DestroyFieldIterFunc = *const fn (std.mem.Allocator, *anyopaque) void;
-    const NextItemFunc = *const fn (*anyopaque) ?Union;
-    const IteratorWrapper = struct {
-        createFunc: CreateFieldIterFunc,
-        destroyFunc: DestroyFieldIterFunc,
-        nextFunc: NextItemFunc,
-    };
-
-    var iterator_wrapper_arr: [AMT_ITERABLE_FIELDS]struct {
-        []const u8,
-        IteratorWrapper,
-    } = undefined;
-
-    inline for (iterable_fields_arr, &iterator_wrapper_arr) |f, *item| {
-        item.*.@"0" = f.name;
-        const T = root.iterate.StructFieldIterator(Context, f.name);
-
-        const createFn = struct {
-            fn fromParentWrapper(a: std.mem.Allocator, parent: *Context) *anyopaque {
-                const instance = a.create(T) catch @panic("out of memory");
-                instance.* = T.fromParentPtr(parent);
-                const opaq: *anyopaque = @ptrCast(instance);
-                return opaq;
-            }
-        }.fromParentWrapper;
-        const destroyFn = struct {
-            fn destroy(a: std.mem.Allocator, inst: *anyopaque) void {
-                const instance: *T = @ptrCast(@alignCast(inst));
-                a.destroy(instance);
-            }
-        }.destroy;
-        const nextFn = struct {
-            fn nextWrapper(inst: *anyopaque) ?Union {
-                var instance: *T = @ptrCast(@alignCast(inst));
-                const next = instance.next() orelse return null;
-                return @unionInit(Union, f.name, next);
-            }
-        }.nextWrapper;
-        item.@"1" = IteratorWrapper{
-            .createFunc = createFn,
-            .destroyFunc = destroyFn,
-            .nextFunc = nextFn,
-        };
-    }
-
-    const create_iterator_function_map = std.StaticStringMap(IteratorWrapper).initComptime(iterator_wrapper_arr);
-
+    const ContextIterableFields = root.iterate.IterableFields(Context);
     return struct {
         context: Context,
         const Self = @This();
@@ -162,7 +51,128 @@ pub fn Template(comptime Context: type) type {
             return .{ .context = ctx };
         }
 
-        fn handleForOpen(self: *Self, lexer: *Lexer, a: std.mem.Allocator, json_opts: std.json.Stringify.Options) Error![]u8 {
+        fn handleNext(
+            self: *Self,
+            a: Allocator,
+            next: anytype,
+            lexer: *Lexer,
+            scope: *ForScope,
+            json_opts: std.json.Stringify.Options,
+        ) Error!void {
+            var in_expression = false;
+            while (try lexer.nextToken()) |tok| {
+                log.debug(
+                    \\On token: {any}
+                , .{tok.typ});
+                switch (tok.typ) {
+                    .for_open => {
+                        const bytes = try self.handleForOpen(lexer, a, json_opts);
+                        try scope.writer.writer.writeAll(bytes);
+                    },
+                    .for_close => scope.closed = true,
+                    .marker_close => if (scope.closed) return,
+                    .expression_open => {
+                        if (in_expression) {
+                            log.err(
+                                \\ Encountered an .expression_open token inside of an expression
+                            , .{});
+                            return error.SyntaxInvalid;
+                        } else in_expression = true;
+                    },
+                    .expression_close => {
+                        if (scope.current_access) |*opts| {
+                            const fieldname_to_check = if (opts.field_name.len > 1) opts.field_name[1..] else null;
+
+                            if (fieldname_to_check) |name| {
+                                switch (@typeInfo(@TypeOf(next))) {
+                                    .@"struct" => |st| {
+                                        inline for (st.fields) |f| {
+                                            if (std.mem.eql(u8, f.name, name)) {
+                                                opts.field_name = name;
+                                                writeField(next, &scope.writer.writer, opts.*) catch |e| {
+                                                    log.err(
+                                                        \\ Failed to writefield: {any}
+                                                    , .{e});
+                                                    return e;
+                                                };
+                                            }
+                                        }
+                                    },
+                                    else => return error.InvalidNext,
+                                }
+                            } else {
+                                try writeType(@TypeOf(next), next, &scope.writer.writer, opts.*);
+                            }
+                        }
+                        scope.current_access = null;
+                        in_expression = false;
+                    },
+                    .access => {
+                        if (!in_expression) {
+                            log.err(
+                                \\ Encountered .access token outside of an expression
+                            , .{});
+                            return error.SyntaxInvalid;
+                        }
+                        if (scope.current_access != null) {
+                            log.err(
+                                \\ Encountered .access token in loop before resolving previous
+                            , .{});
+                            return error.SyntaxInvalid;
+                        }
+                        log.debug(
+                            \\ EXPRESSION: {any}
+                            \\ ACCESS: {any}
+                            \\ LITERAL: {s}
+                        , .{
+                            in_expression,
+                            scope.current_access,
+                            tok.literal,
+                        });
+                        scope.current_access = .{
+                            .field_name = tok.literal,
+                        };
+                    },
+                    .json => {
+                        if (!in_expression) {
+                            log.err(
+                                \\ Encountered .json token outside of an expression
+                            , .{});
+                            return error.SyntaxInvalid;
+                        }
+                        if (scope.current_access == null) {
+                            log.err(
+                                \\ Encountered .json token before an .access token
+                            , .{});
+                            return error.SyntaxInvalid;
+                        }
+                        scope.current_access.?.json = &json_opts;
+                    },
+
+                    else => if (!in_expression and (tok.typ == .literal or tok.typ.isWhitespace())) {
+                        if (should_append: {
+                            if (!tok.typ.isWhitespace()) break :should_append true;
+                            break :should_append switch (scope.prev_token) {
+                                .expression_open,
+                                .access,
+                                .json,
+                                .marker_open,
+                                .for_close,
+                                => false,
+                                .marker_close => tok.typ == .space,
+                                else => true,
+                            };
+                        }) {
+                            if (tok.typ.isWhitespace()) log.debug("Appending {any} after {any}", .{ tok.typ, scope.prev_token });
+                            try scope.writer.writer.writeAll(tok.literal);
+                        }
+                    },
+                }
+                if (!tok.typ.isWhitespace()) scope.prev_token = tok.typ;
+            }
+        }
+
+        fn handleForOpen(self: *Self, lexer: *Lexer, a: Allocator, json_opts: std.json.Stringify.Options) Error![]u8 {
             const field = try lexer.expectNextNonWhitespace(.access);
             _ = try lexer.expectNextNonWhitespace(.marker_close);
             const start_pos = lexer.pos;
@@ -175,9 +185,9 @@ pub fn Template(comptime Context: type) type {
                 .iterated_field_name = field.literal[1..],
             };
 
-            const iter_wrapper: ?IteratorWrapper = create_iterator_function_map.get(field.literal[1..]) orelse return error.CannotIterate;
-            const iter = iter_wrapper.?.createFunc(a, &self.context);
-            defer iter_wrapper.?.destroyFunc(a, iter);
+            var iter_dispatch: ?ContextIterableFields.Dispatch = ContextIterableFields.iter_dispatch_map.get(field.literal[1..]) orelse return error.CannotIterate;
+            const iter = iter_dispatch.?.createFunc(a, &self.context);
+            defer iter_dispatch.?.destroyFunc(a, iter);
 
             log.debug(
                 \\ FOR LOOP OPENED
@@ -186,17 +196,32 @@ pub fn Template(comptime Context: type) type {
 
             defer current_scope.deinit();
 
+            const HandleNextArgs =
+                struct {
+                    self: *Self,
+                    a: Allocator,
+                    lexer: *Lexer,
+                    current_scope: *ForScope,
+                    true_position: *?usize,
+                    json_opts: std.json.Stringify.Options,
+                };
             var true_position: ?usize = null;
-            while (iter_wrapper.?.nextFunc(iter)) |n| {
-                inline for (iterable_fields_arr) |f| {
-                    if (std.mem.eql(u8, f.name, current_scope.iterated_field_name)) {
-                        const next = @field(n, f.name);
-                        try handleNext(next, lexer, &current_scope, json_opts);
-                        current_scope.prev_token = .marker_close;
-                        if (true_position == null) true_position = lexer.pos;
-                        lexer.pos = current_scope.start_pos;
+            while (iter_dispatch.?.getNext(iter)) {
+                try iter_dispatch.?.doWithCurrent(struct {
+                    fn do(current: anytype, args: HandleNextArgs) Error!void {
+                        try args.self.handleNext(args.a, current, args.lexer, args.current_scope, args.json_opts);
+                        args.current_scope.prev_token = .marker_close;
+                        if (args.true_position.* == null) args.true_position.* = args.lexer.pos;
+                        args.lexer.pos = args.current_scope.start_pos;
                     }
-                }
+                }.do, HandleNextArgs{
+                    .self = self,
+                    .a = a,
+                    .lexer = lexer,
+                    .current_scope = &current_scope,
+                    .true_position = &true_position,
+                    .json_opts = json_opts,
+                });
             }
             log.debug(
                 \\ FOR LOOP CLOSED
@@ -206,7 +231,7 @@ pub fn Template(comptime Context: type) type {
             return current_scope.writer.toOwnedSlice();
         }
 
-        pub fn render(self: *Self, a: std.mem.Allocator, template_string: []const u8, json_opts: std.json.Stringify.Options) Error![]u8 {
+        pub fn render(self: *Self, a: Allocator, template_string: []const u8, json_opts: std.json.Stringify.Options) Error![]u8 {
             log.debug(
                 \\ Attempting to render {s}:
                 \\ {any}
@@ -491,119 +516,4 @@ fn writeField(
     }
 
     return error.CannotSerialize;
-}
-
-fn handleNext(
-    next: anytype,
-    lexer: *Lexer,
-    scope: *ForScope,
-    json_opts: std.json.Stringify.Options,
-) Error!void {
-    var in_expression = false;
-    while (try lexer.nextToken()) |tok| {
-        log.debug(
-            \\On token: {any}
-        , .{tok.typ});
-        switch (tok.typ) {
-            .for_close => scope.closed = true,
-            .marker_close => if (scope.closed) return,
-            .expression_open => {
-                if (in_expression) {
-                    log.err(
-                        \\ Encountered an .expression_open token inside of an expression
-                    , .{});
-                    return error.SyntaxInvalid;
-                } else in_expression = true;
-            },
-            .expression_close => {
-                if (scope.current_access) |*opts| {
-                    const fieldname_to_check = if (opts.field_name.len > 1) opts.field_name[1..] else null;
-
-                    if (fieldname_to_check) |name| {
-                        switch (@typeInfo(@TypeOf(next))) {
-                            .@"struct" => |st| {
-                                inline for (st.fields) |f| {
-                                    if (std.mem.eql(u8, f.name, name)) {
-                                        opts.field_name = name;
-                                        writeField(next, &scope.writer.writer, opts.*) catch |e| {
-                                            log.err(
-                                                \\ Failed to writefield: {any}
-                                            , .{e});
-                                            return e;
-                                        };
-                                    }
-                                }
-                            },
-                            else => return error.InvalidNext,
-                        }
-                    } else {
-                        try writeType(@TypeOf(next), next, &scope.writer.writer, opts.*);
-                    }
-                }
-                scope.current_access = null;
-                in_expression = false;
-            },
-            .access => {
-                if (!in_expression) {
-                    log.err(
-                        \\ Encountered .access token outside of an expression
-                    , .{});
-                    return error.SyntaxInvalid;
-                }
-                if (scope.current_access != null) {
-                    log.err(
-                        \\ Encountered .access token in loop before resolving previous
-                    , .{});
-                    return error.SyntaxInvalid;
-                }
-                log.debug(
-                    \\ EXPRESSION: {any}
-                    \\ ACCESS: {any}
-                    \\ LITERAL: {s}
-                , .{
-                    in_expression,
-                    scope.current_access,
-                    tok.literal,
-                });
-                scope.current_access = .{
-                    .field_name = tok.literal,
-                };
-            },
-            .json => {
-                if (!in_expression) {
-                    log.err(
-                        \\ Encountered .json token outside of an expression
-                    , .{});
-                    return error.SyntaxInvalid;
-                }
-                if (scope.current_access == null) {
-                    log.err(
-                        \\ Encountered .json token before an .access token
-                    , .{});
-                    return error.SyntaxInvalid;
-                }
-                scope.current_access.?.json = &json_opts;
-            },
-
-            else => if (!in_expression and (tok.typ == .literal or tok.typ.isWhitespace())) {
-                if (should_append: {
-                    if (!tok.typ.isWhitespace()) break :should_append true;
-                    break :should_append switch (scope.prev_token) {
-                        .expression_open,
-                        .access,
-                        .json,
-                        .marker_open,
-                        .for_close,
-                        => false,
-                        .marker_close => tok.typ == .space,
-                        else => true,
-                    };
-                }) {
-                    if (tok.typ.isWhitespace()) log.debug("Appending {any} after {any}", .{ tok.typ, scope.prev_token });
-                    try scope.writer.writer.writeAll(tok.literal);
-                }
-            },
-        }
-        if (!tok.typ.isWhitespace()) scope.prev_token = tok.typ;
-    }
 }

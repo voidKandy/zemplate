@@ -76,7 +76,7 @@ fn ForLoopTestCase(comptime TemplateContext: type) type {
 }
 
 test "for loop test" {
-    // std.testing.log_level = .debug;
+    std.testing.log_level = .debug;
     const allocator = std.testing.allocator;
     for (ALL_THREE_ITERABLE_CASES) |case| {
         if (try case.runTest(allocator)) |failure| {
