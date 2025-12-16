@@ -16,34 +16,38 @@ const SerializeOptions = struct {
     index: ?usize = null,
 };
 
-const ForScope = struct {
-    arena: std.heap.ArenaAllocator,
-    writer: std.Io.Writer.Allocating,
-    /// The name of the actual field being accessed
-    iterated_field_name: []const u8,
-    /// Functions exactly like `prev_token` in the outermost `render` method
-    prev_token: Token.Type,
-    start_pos: usize,
-    closed: bool = false,
-    current_access: ?SerializeOptions = null,
-
-    pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        try writer.print(
-            \\ field name: {s}
-            \\ prev token: {any}
-            \\ start pos: {d}
-            \\ closed: {any}
-        , .{ self.iterated_field_name, self.prev_token, self.start_pos, self.closed });
-    }
-
-    pub fn deinit(self: *@This()) void {
-        self.arena.deinit();
-        self.writer.deinit();
-    }
-};
-
 pub fn Template(comptime Context: type) type {
     const ContextIterableFields = root.iterate.IterableFields(Context);
+
+    const ForScope = struct {
+        arena: std.heap.ArenaAllocator,
+        writer: std.Io.Writer.Allocating,
+        /// The name of the actual field being accessed
+        iterated_field_name: []const u8,
+        iterator: ContextIterableFields.Dispatch,
+        current_depth: ContextIterableFields.PTag,
+        /// Functions exactly like `prev_token` in the outermost `render` method
+        prev_token: Token.Type,
+        start_pos: usize,
+        closed: bool = false,
+        current_access: ?SerializeOptions = null,
+        // outer: ?@This(),
+
+        pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+            try writer.print(
+                \\ field name: {s}
+                \\ prev token: {any}
+                \\ start pos: {d}
+                \\ closed: {any}
+            , .{ self.iterated_field_name, self.prev_token, self.start_pos, self.closed });
+        }
+
+        pub fn deinit(self: *@This()) void {
+            self.arena.deinit();
+            self.writer.deinit();
+        }
+    };
+
     return struct {
         context: Context,
         const Self = @This();
@@ -66,7 +70,7 @@ pub fn Template(comptime Context: type) type {
                 , .{tok.typ});
                 switch (tok.typ) {
                     .for_open => {
-                        const bytes = try self.handleForOpen(lexer, a, json_opts);
+                        const bytes = try self.handleForOpen(scope.*, lexer, a, json_opts);
                         try scope.writer.writer.writeAll(bytes);
                     },
                     .for_close => scope.closed = true,
@@ -172,22 +176,37 @@ pub fn Template(comptime Context: type) type {
             }
         }
 
-        fn handleForOpen(self: *Self, lexer: *Lexer, a: Allocator, json_opts: std.json.Stringify.Options) Error![]u8 {
-            const field = try lexer.expectNextNonWhitespace(.access);
+        fn handleForOpen(self: *Self, outer_scope: ?ForScope, lexer: *Lexer, a: Allocator, json_opts: std.json.Stringify.Options) Error![]u8 {
+            const access = try lexer.expectNextNonWhitespace(.access);
             _ = try lexer.expectNextNonWhitespace(.marker_close);
             const start_pos = lexer.pos;
+            // ContextIterableFields.iter_dispatch_map.get(// Something with access.literal and outer_scope.field_name)
+
+            const sani_literal = access.literal[1..];
+            var iter_dispatch = blk: {
+                if (outer_scope) |sc| {
+                    const key = try std.fmt.allocPrint(a, "{s}.{s}", .{ sc.iterated_field_name, sani_literal });
+                    defer a.free(key);
+                    break :blk ContextIterableFields.iter_dispatch_map.get(key);
+                } else break :blk ContextIterableFields.iter_dispatch_map.get(sani_literal);
+            } orelse return error.CannotIterate;
+
+            const current_depth: ContextIterableFields.PTag =
+                if (outer_scope) |s| @enumFromInt((@intFromEnum(s.current_depth) + 1) % ContextIterableFields.AMT_TAG_VARIANTS) else @enumFromInt(0);
 
             var current_scope = ForScope{
                 .writer = std.Io.Writer.Allocating.init(a),
                 .arena = std.heap.ArenaAllocator.init(a),
                 .start_pos = start_pos,
                 .prev_token = .marker_close,
-                .iterated_field_name = field.literal[1..],
+                .iterated_field_name = sani_literal,
+                .current_depth = current_depth,
+                .iterator = iter_dispatch,
             };
 
-            var iter_dispatch: ?ContextIterableFields.Dispatch = ContextIterableFields.iter_dispatch_map.get(field.literal[1..]) orelse return error.CannotIterate;
-            const iter = iter_dispatch.?.createFunc(a, &self.context);
-            defer iter_dispatch.?.destroyFunc(a, iter);
+            var un = ContextIterableFields.initParentUnion(current_scope.current_depth, self.context);
+            const iter = iter_dispatch.createFunc(a, &un);
+            defer iter_dispatch.destroyFunc(a, iter);
 
             log.debug(
                 \\ FOR LOOP OPENED
@@ -205,9 +224,10 @@ pub fn Template(comptime Context: type) type {
                     true_position: *?usize,
                     json_opts: std.json.Stringify.Options,
                 };
+
             var true_position: ?usize = null;
-            while (iter_dispatch.?.getNext(iter)) {
-                try iter_dispatch.?.doWithCurrent(struct {
+            while (iter_dispatch.getNext(iter)) {
+                try iter_dispatch.doWithCurrent(struct {
                     fn do(current: anytype, args: HandleNextArgs) Error!void {
                         try args.self.handleNext(args.a, current, args.lexer, args.current_scope, args.json_opts);
                         args.current_scope.prev_token = .marker_close;
@@ -300,7 +320,7 @@ pub fn Template(comptime Context: type) type {
                     },
 
                     .for_open => {
-                        const slice = try self.handleForOpen(&lexer, a, json_opts);
+                        const slice = try self.handleForOpen(null, &lexer, a, json_opts);
                         defer a.free(slice);
                         prev_token = .marker_close;
                         log.debug(

@@ -15,7 +15,10 @@ test "nested access test" {
     const expected =
         \\ Hello World!
     ;
-    const Tmpl = zemplate.Template(struct { field: struct { inner: []const u8 } });
+
+    const Nested = struct { inner: []const u8 };
+    const TestStruct = struct { field: Nested };
+    const Tmpl = zemplate.Template(TestStruct);
     var tmpl = Tmpl.init(.{ .field = .{ .inner = "World" } });
     const render = try tmpl.render(
         allocator,
