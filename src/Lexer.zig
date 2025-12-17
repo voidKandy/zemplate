@@ -202,7 +202,6 @@ pub fn nextToken(self: *Self) Error!?Token {
     slice_start = self.pos;
 
     if (token_opt) |token| {
-        log.debug("Potential Token: {f}", .{token});
         if (!token.typ.isWhitespace())
             self.prev_token = token.typ;
 
@@ -219,7 +218,7 @@ pub fn nextToken(self: *Self) Error!?Token {
             self.between_markers = false;
         }
 
-        log.debug("Got Token:\n{f}", .{token});
+        log.debug("Got Token: {f}", .{token});
     }
     return token_opt;
 }

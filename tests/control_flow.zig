@@ -5,6 +5,7 @@ const panic = std.debug.panic;
 const runTest = @import("shared.zig").runTest;
 
 test "control flow" {
+    std.testing.log_level = .debug;
     runTest("THREE ITERABLES", struct {
         fn run() !void {
             const allocator = std.testing.allocator;
@@ -20,6 +21,7 @@ test "control flow" {
             }
         }
     }.run);
+    std.testing.log_level = .warn;
 }
 
 const Failure = struct {
@@ -151,7 +153,7 @@ const ALL_THREE_ITERABLE_CASES = &[_]ForLoopTestCase(ThreeIterableCtx){
         .name = "nested for loops",
         .content =
         \\||zz for .structs zz||
-        \\||zz for . zz||
+        \\||zz for .inner_string zz||
         \\ {{..}} - {{.}}
         \\||zz endfor zz||
         \\||zz endfor zz||

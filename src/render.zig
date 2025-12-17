@@ -65,7 +65,8 @@ pub fn Template(comptime Context: type) type {
         ) Error!void {
             var in_expression = false;
             while (try lexer.nextToken()) |tok| {
-                log.debug(
+                // change to debug
+                log.warn(
                     \\On token: {any}
                 , .{tok.typ});
                 switch (tok.typ) {
@@ -180,19 +181,45 @@ pub fn Template(comptime Context: type) type {
             const access = try lexer.expectNextNonWhitespace(.access);
             _ = try lexer.expectNextNonWhitespace(.marker_close);
             const start_pos = lexer.pos;
-            // ContextIterableFields.iter_dispatch_map.get(// Something with access.literal and outer_scope.field_name)
 
-            const sani_literal = access.literal[1..];
+            var sani_literal_needs_freeing = false;
+            const sani_literal = blk: {
+                if (std.mem.allEqual(u8, access.literal, '.')) {
+                    const sc = outer_scope orelse {
+                        log.err(
+                            \\ Encountered an access literal consisting entirely of '.' in a top-level for loop
+                        , .{});
+                        return error.SyntaxInvalid;
+                    };
+                    sani_literal_needs_freeing = true;
+                    break :blk try std.fmt.allocPrint(a, "{s}{s}", .{ sc.iterated_field_name, access.literal[1..] });
+                }
+                break :blk access.literal[1..];
+            };
+
+            defer if (sani_literal_needs_freeing) a.free(sani_literal);
+
+            log.warn("Attempting to grab iterate for '{s}'", .{sani_literal});
+
+            // remove this loop after dbugging
+            for (ContextIterableFields.iter_dispatch_map.keys()) |k| {
+                log.warn("KEY: '{s}'", .{k});
+            }
+
             var iter_dispatch = blk: {
                 if (outer_scope) |sc| {
                     const key = try std.fmt.allocPrint(a, "{s}.{s}", .{ sc.iterated_field_name, sani_literal });
+                    log.warn("key: {s}", .{key});
                     defer a.free(key);
                     break :blk ContextIterableFields.iter_dispatch_map.get(key);
                 } else break :blk ContextIterableFields.iter_dispatch_map.get(sani_literal);
             } orelse return error.CannotIterate;
 
             const current_depth: ContextIterableFields.PTag =
-                if (outer_scope) |s| @enumFromInt((@intFromEnum(s.current_depth) + 1) % ContextIterableFields.AMT_TAG_VARIANTS) else @enumFromInt(0);
+                if (outer_scope) |s|
+                    @enumFromInt((@intFromEnum(s.current_depth) + 1) % ContextIterableFields.AMT_TAG_VARIANTS)
+                else
+                    @enumFromInt(0);
 
             var current_scope = ForScope{
                 .writer = std.Io.Writer.Allocating.init(a),
@@ -215,23 +242,25 @@ pub fn Template(comptime Context: type) type {
 
             defer current_scope.deinit();
 
-            const HandleNextArgs =
-                struct {
-                    self: *Self,
-                    a: Allocator,
-                    lexer: *Lexer,
-                    current_scope: *ForScope,
-                    true_position: *?usize,
-                    json_opts: std.json.Stringify.Options,
-                };
+            const HandleNextArgs = struct {
+                self: *Self,
+                a: Allocator,
+                lexer: *Lexer,
+                current_scope: *ForScope,
+                true_position: *?usize,
+                json_opts: std.json.Stringify.Options,
+            };
 
             var true_position: ?usize = null;
+
             while (iter_dispatch.getNext(iter)) {
                 try iter_dispatch.doWithCurrent(struct {
                     fn do(current: anytype, args: HandleNextArgs) Error!void {
                         try args.self.handleNext(args.a, current, args.lexer, args.current_scope, args.json_opts);
                         args.current_scope.prev_token = .marker_close;
                         if (args.true_position.* == null) args.true_position.* = args.lexer.pos;
+                        log.warn("resetting lexer position from {d} to {d}", .{ args.lexer.pos, args.current_scope.start_pos });
+
                         args.lexer.pos = args.current_scope.start_pos;
                     }
                 }.do, HandleNextArgs{
@@ -243,6 +272,7 @@ pub fn Template(comptime Context: type) type {
                     .json_opts = json_opts,
                 });
             }
+
             log.debug(
                 \\ FOR LOOP CLOSED
             , .{});

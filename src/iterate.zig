@@ -103,7 +103,10 @@ const Field = struct {
         return .{ .name = name, .type = field.type };
     }
 
-    fn nameInfo(self: @This()) struct { parent_name: ?[]const u8, field_name: []const u8 } {
+    fn nameInfo(self: @This()) struct {
+        parent_name: ?[]const u8,
+        field_name: []const u8,
+    } {
         var iter = std.mem.splitBackwardsScalar(u8, self.name, '.');
         const field_name = iter.first();
         const parent_name =
@@ -167,15 +170,10 @@ pub fn IterableFields(comptime Context: type) type {
         all_fields: [TOTAL_ITERABLE_FIELDS]Field = undefined,
         /// The indices at which the parent `T` of the flattened fields are stored here
         change_indices: [AMT_CHILDREN_WITH_ITERABLE_FIELDS]usize = undefined,
-        /// Upon a change index being encountered, the index into this is incremented
-        /// Also, this field is used to construct the
-        // union_tags: [AMT_CHILDREN_WITH_ITERABLE_FIELDS + 1][]const u8 = undefined,
 
         inline fn get() @This() {
             var all_fields: [TOTAL_ITERABLE_FIELDS]Field = undefined;
             var change_indices: [AMT_CHILDREN_WITH_ITERABLE_FIELDS]usize = undefined;
-            // var union_tags: [AMT_CHILDREN_WITH_ITERABLE_FIELDS + 1][]const u8 = undefined;
-            // union_tags[0] = PARENT_UNION_OUTERMOST_TAG_NAME;
 
             var i: usize = 0;
             inline for (context_type_info.@"struct".fields) |f| {
@@ -190,7 +188,6 @@ pub fn IterableFields(comptime Context: type) type {
 
             for (0..AMT_CHILDREN_WITH_ITERABLE_FIELDS) |j| {
                 const field = children_fields[j];
-                // union_tags[j + 1] = v.name;
                 change_indices[j] = i;
                 for (IterableFields(field.type).all_iterable_struct_fields) |f| {
                     all_fields[i] = Field.fromFieldWithParentFieldName(f, field.name);
@@ -198,12 +195,9 @@ pub fn IterableFields(comptime Context: type) type {
                 }
             }
 
-            // if (union_tags.len != AMT_CHILDREN_WITH_ITERABLE_FIELDS + 1) @panic("Malformed union tags");
-
             return .{
                 .all_fields = all_fields,
                 .change_indices = change_indices,
-                // .union_tags = union_tags,
             };
         }
     };
@@ -314,13 +308,6 @@ pub fn IterableFields(comptime Context: type) type {
             },
         });
 
-    // comptime {
-    //     @compileLog("ALL PARENT UNION FIELDS FOR " ++ @typeName(Context));
-    //     for (@typeInfo(ParentUnion).@"union".fields) |f| {
-    //         @compileLog("FIELDNAME: " ++ f.name ++ " TYPE: " ++ @typeName(f.type));
-    //     }
-    // }
-
     const CreateFieldIterFunc = *const fn (std.mem.Allocator, *ParentUnion) *anyopaque;
     const DestroyFieldIterFunc = *const fn (std.mem.Allocator, *anyopaque) void;
     const NextItemFunc = *const fn (*anyopaque) ?ReturnUnion;
@@ -331,7 +318,10 @@ pub fn IterableFields(comptime Context: type) type {
         current: ?ReturnUnion = null,
 
         pub fn getNext(self: *@This(), instance: *anyopaque) bool {
-            const n = self.nextFunc(instance) orelse return false;
+            const n = self.nextFunc(instance) orelse {
+                self.current = null;
+                return false;
+            };
             self.current = n;
             return true;
         }
@@ -368,12 +358,13 @@ pub fn IterableFields(comptime Context: type) type {
         }
         const name_info = f.nameInfo();
         const parent_name = @tagName(current_parent);
+
         if (name_info.parent_name) |n|
             if (!eql(u8, n, parent_name)) @compileError("Expected " ++ n ++ " and " ++ parent_name ++ " to be the same");
 
         const ParentType = @FieldType(ParentUnion, parent_name);
 
-        item.*.@"0" = parent_name;
+        item.*.@"0" = f.name;
 
         const I = StructFieldIterator(ParentType, name_info.field_name);
 
