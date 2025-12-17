@@ -1,8 +1,13 @@
 const std = @import("std");
 const zemplate = @import("zemplate");
 const print = std.debug.print;
+const runTest = @import("shared.zig").runTest;
 
-test "custom iterator" {
+test "data" {
+    runTest("CUSTOM ITERATOR", customIterator);
+}
+
+fn customIterator() !void {
     const OtherStruct = struct {
         other_string: []const u8,
     };
@@ -95,5 +100,4 @@ test "custom iterator" {
             }
         }
     }
-    print("ITERATOR Test PASSED", .{});
 }

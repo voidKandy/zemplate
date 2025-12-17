@@ -2,6 +2,25 @@ const std = @import("std");
 const zemplate = @import("zemplate");
 const print = std.debug.print;
 const panic = std.debug.panic;
+const runTest = @import("shared.zig").runTest;
+
+test "control flow" {
+    runTest("THREE ITERABLES", struct {
+        fn run() !void {
+            const allocator = std.testing.allocator;
+            for (ALL_THREE_ITERABLE_CASES) |case| {
+                if (try case.runTest(allocator)) |failure| {
+                    panic(
+                        \\
+                        \\ {s} Test Failed:
+                        \\ {f}
+                        \\
+                    , .{ case.name, failure });
+                }
+            }
+        }
+    }.run);
+}
 
 const Failure = struct {
     index: usize,
@@ -73,27 +92,6 @@ fn ForLoopTestCase(comptime TemplateContext: type) type {
             return Failure.checkForFailure(got, self.expected);
         }
     };
-}
-
-test "for loop test" {
-    std.testing.log_level = .debug;
-    const allocator = std.testing.allocator;
-    for (ALL_THREE_ITERABLE_CASES) |case| {
-        if (try case.runTest(allocator)) |failure| {
-            panic(
-                \\
-                \\ {s} Test Failed:
-                \\ {f}
-                \\
-            , .{ case.name, failure });
-        }
-    }
-
-    print(
-        \\
-        \\ FOR LOOP Test PASSED
-        \\
-    , .{});
 }
 
 const TypeWithInnerString = struct { inner_string: []const u8 };

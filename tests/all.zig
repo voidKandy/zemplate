@@ -7,10 +7,18 @@ comptime {
 const std = @import("std");
 const zemplate = @import("zemplate");
 const print = std.debug.print;
+const runTest = @import("shared.zig").runTest;
+const logDiff = @import("shared.zig").logDiff;
 const Lexer = zemplate.Lexer;
 const Token = zemplate.Token;
 
-test "nested access test" {
+test "all" {
+    runTest("NESTED ACCESS", nestedAccessTest);
+    runTest("README", readmeTest);
+    runTest("RENDER", renderTest);
+}
+
+fn nestedAccessTest() !void {
     const allocator = std.testing.allocator;
     const expected =
         \\ Hello World!
@@ -39,15 +47,9 @@ test "nested access test" {
         , .{ expected, render });
         return;
     }
-    print(
-        \\
-        \\ NEST Test PASSED
-        \\
-    , .{});
 }
 
-test "readme test" {
-    // std.testing.log_level = .debug;
+fn readmeTest() !void {
     const allocator = std.testing.allocator;
     const expected =
         \\ Hello World!
@@ -72,14 +74,9 @@ test "readme test" {
         , .{ expected, render });
         return;
     }
-    print(
-        \\
-        \\ README Test PASSED
-        \\
-    , .{});
 }
 
-test "render test" {
+fn renderTest() !void {
     const Field2 =
         struct {
             str: []const u8,
@@ -111,7 +108,6 @@ test "render test" {
         }
     };
 
-    // const TestTemplate = zemplate.Template(Test, @embedFile("test.html"));
     const allocator = std.testing.allocator;
     var ctx = Test{ .field1 = std.ArrayList(u8).fromOwnedSlice(try allocator.dupe(u8, "this is a field")), .field2 = .{ .str = "hello world", .number = 42 }, .field3 = "section", .field4 = try allocator.dupe(u8, "this is field 4"), .field5 = &[_]Field5{
         .{ .num = 420 },
@@ -164,35 +160,4 @@ test "render test" {
     defer allocator.free(render);
 
     logDiff(expected, render);
-
-    print(
-        \\
-        \\ Render Test PASSED
-        \\
-    , .{});
-}
-
-pub fn logDiff(expected: []const u8, actual: []const u8) void {
-    if (std.mem.indexOfDiff(u8, expected, actual)) |idx| {
-        const start = @max(idx, @as(usize, 10)) - 10;
-        const end_expected = @min(expected.len, idx + 10);
-        const end_actual = @min(actual.len, idx + 10);
-
-        const exp_ctx = expected[start..end_expected];
-        const act_ctx = actual[start..end_actual];
-
-        std.log.err("❌ Render mismatch at index {d}", .{idx});
-
-        std.log.err("Expected context ({}..{}): \"{s}\"", .{ start, end_expected, exp_ctx });
-        std.log.err("Actual   context ({}..{}): \"{s}\"", .{ start, end_actual, act_ctx });
-
-        std.log.err("Expected char: '{c}' (byte {d})", .{
-            expected[idx], expected[idx],
-        });
-        std.log.err("Actual   char: '{c}' (byte {d})", .{
-            actual[idx], actual[idx],
-        });
-
-        return;
-    }
 }

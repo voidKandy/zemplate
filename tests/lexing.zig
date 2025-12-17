@@ -2,9 +2,13 @@ const std = @import("std");
 const zemplate = @import("zemplate");
 const print = std.debug.print;
 const panic = std.debug.panic;
-
+const runTest = @import("shared.zig").runTest;
 const Lexer = zemplate.Lexer;
 const Token = zemplate.Token;
+
+test "lexing" {
+    runTest("LEXING", lexerTest);
+}
 
 const LexerTestCase = struct {
     name: []const u8,
@@ -42,7 +46,7 @@ const LexerTestCase = struct {
     }
 };
 
-test "lexer test" {
+fn lexerTest() !void {
     for (ALL_CASES) |case| {
         if (try case.runTest()) |failure| {
             panic(
@@ -53,11 +57,6 @@ test "lexer test" {
             , .{ case.name, failure });
         }
     }
-    print(
-        \\
-        \\ LEXER Test PASSED
-        \\
-    , .{});
 }
 
 const ALL_CASES = &[_]LexerTestCase{
