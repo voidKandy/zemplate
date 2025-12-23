@@ -27,48 +27,50 @@ pub inline fn UnwrapIterableChild(comptime T: type) ?type {
     return child_opt;
 }
 
-pub fn StructFieldIterator(comptime Parent: type, comptime FIELD_NAME: []const u8) type {
+pub fn StructFieldIterator(comptime Parent: type, comptime field_name: []const u8) error{ NotIterable, ParentNotStruct, InvalidFieldName }!type {
     const FieldType = blk: {
         const info = @typeInfo(Parent);
         switch (info) {
             .@"struct" => {},
-            else => @compileError("Expected some struct type, instead got " ++ @typeName(Parent)),
+            else => return error.ParentNotStruct,
         }
 
         inline for (info.@"struct".fields) |f| {
-            if (eql(u8, f.name, FIELD_NAME))
+            if (eql(u8, f.name, field_name))
                 break :blk f.type;
         }
 
-        @compileError(@typeName(Parent) ++ " Does not have field of given name: " ++ FIELD_NAME);
+        return error.InvalidFieldName;
     };
 
     const field_type_info = @typeInfo(FieldType);
 
     const ItemType = UnwrapIterableChild(FieldType) orelse {
-        @compileError(@typeName(Parent) ++ " is not iterable");
+        return error.NotIterable;
     };
 
     return struct {
         instance: FieldType,
         index: usize = 0,
+        pub const Item = ItemType;
+
         pub fn fromParentPtr(p: *Parent) @This() {
-            log.debug("Creating Iterator for field {s} of struct {any}", .{ FIELD_NAME, Parent });
-            const field: FieldType = @field(p, FIELD_NAME);
+            log.debug("Creating Iterator for field {s} of struct {any}", .{ field_name, Parent });
+            const field: FieldType = @field(p, field_name);
             return .{
                 .instance = field,
             };
         }
 
-        pub fn next(self: *@This()) ?ItemType {
+        pub fn next(self: *@This()) ?*const ItemType {
             defer self.index += 1;
             switch (field_type_info) {
                 .array => |ar| return if (ar.len > self.index)
-                    self.instance[self.index]
+                    &self.instance[self.index]
                 else
                     null,
                 .pointer => |ptr| return if (ptr.size == .slice and self.instance.len > self.index)
-                    self.instance[self.index]
+                    &self.instance[self.index]
                 else
                     null,
                 else => @panic("Should be unreachable"),
@@ -133,7 +135,7 @@ pub fn IterableFields(comptime Context: type) type {
         break :blk n;
     };
 
-    const ChildrenData = comptime struct {
+    const CHILDREN_DATA: struct {
         /// flattened total amount of fields;
         /// the sum of all iterable fields per child
         total_fields: usize,
@@ -157,13 +159,11 @@ pub fn IterableFields(comptime Context: type) type {
                 .map = std.StaticStringMap(Field).initComptime(arr),
             };
         }
-    };
-
-    const CHILDREN_DATA = ChildrenData.get();
+    } = .get();
 
     const TOTAL_ITERABLE_FIELDS = CHILDREN_DATA.total_fields + AMT_ITERABLE_FIELDS;
 
-    const IterableFieldsData = comptime struct {
+    const ITERABLE_FIELDS_DATA: struct {
         /// Flattened list of all Fields that need to have an entry in the outermost 'map'
         /// Fields of the outermost `T` are added if they are, in fact iterable
         /// Fields of inner fields that have iterable fields are also added
@@ -200,9 +200,7 @@ pub fn IterableFields(comptime Context: type) type {
                 .change_indices = change_indices,
             };
         }
-    };
-
-    const ITERABLE_FIELDS_DATA = IterableFieldsData.get();
+    } = .get();
 
     const ReturnUnionCreationData = struct {
         un_fields: [TOTAL_ITERABLE_FIELDS]Type.UnionField = undefined,
@@ -214,7 +212,7 @@ pub fn IterableFields(comptime Context: type) type {
         en_fields: [AMT_CHILDREN_WITH_ITERABLE_FIELDS + 1]Type.EnumField = undefined,
     };
 
-    const AllUnionCreationData = struct {
+    const UNION_CREATION_DATA: struct {
         return_union: ReturnUnionCreationData,
         parent_union: ParentUnionCreationData,
 
@@ -265,9 +263,7 @@ pub fn IterableFields(comptime Context: type) type {
             }
             return .{ .return_union = return_union_dat, .parent_union = parent_union_dat };
         }
-    };
-
-    const UNION_CREATION_DATA = AllUnionCreationData.get();
+    } = .get();
 
     const ReturnTag =
         @Type(Type{

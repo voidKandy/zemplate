@@ -16,269 +16,230 @@ const SerializeOptions = struct {
     index: ?usize = null,
 };
 
-pub fn Template(comptime Context: type) type {
-    const ContextIterableFields = root.iterate.IterableFields(Context);
+const IterCtx = @import("newiterate.zig").StructIterationContext(IterationScope);
 
-    const ForScope = struct {
-        arena: std.heap.ArenaAllocator,
-        writer: std.Io.Writer.Allocating,
-        /// The name of the actual field being accessed
+const IterationScope = struct {
+    arena: std.heap.ArenaAllocator,
+    writer: std.Io.Writer.Allocating,
+    /// The name of the actual field being accessed
+    iterated_field_name: []const u8,
+    iterated_field: IterCtx.Field,
+    // in the case that the iterated field is a struct
+    iterated_field_iter_ctx: ?IterCtx,
+    lexer: *Lexer,
+    start_pos: usize,
+    closed: bool = false,
+    current_access: ?SerializeOptions = null,
+    /// Functions exactly like `prev_token` in the outermost `render` method
+    prev_token: Token.Type,
+    json_opts: std.json.Stringify.Options,
+
+    pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print(
+            \\ field name: {s}
+            \\ prev token: {any}
+            \\ start pos: {d}
+            \\ closed: {any}
+        , .{ self.iterated_field_name, self.prev_token, self.start_pos, self.closed });
+    }
+
+    pub fn init(
+        OuterType: type,
+        outer: anytype,
+        a: Allocator,
         iterated_field_name: []const u8,
-        iterator: ContextIterableFields.Dispatch,
-        current_depth: ContextIterableFields.PTag,
-        /// Functions exactly like `prev_token` in the outermost `render` method
+        lexer: *Lexer,
         prev_token: Token.Type,
-        start_pos: usize,
-        closed: bool = false,
-        current_access: ?SerializeOptions = null,
-        // outer: ?@This(),
+        json_opts: std.json.Stringify.Options,
+    ) !@This() {
+        if (@TypeOf(outer) != *OuterType) @compileError(std.fmt.comptimePrint(
+            \\ Expected types to match
+            \\ {s} != *{s}
+        , .{ @typeName(@TypeOf(outer)), @typeName(OuterType) }));
 
-        pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
-            try writer.print(
-                \\ field name: {s}
-                \\ prev token: {any}
-                \\ start pos: {d}
-                \\ closed: {any}
-            , .{ self.iterated_field_name, self.prev_token, self.start_pos, self.closed });
+        var iter_ctx = try IterCtx.init(OuterType, outer, a);
+        defer iter_ctx.deinit(a);
+        log.warn("Created iteration context: {f}\n", .{iter_ctx});
+        const field = iter_ctx.fields.get(iterated_field_name) orelse return error.CannotIterate;
+        const field_iter_ctx = blk: {
+            inline for (@typeInfo(OuterType).@"struct".fields) |f| {
+                if (std.mem.eql(u8, f.name, iterated_field_name)) {
+                    switch (@typeInfo(f.type)) {
+                        .@"struct" => break :blk try IterCtx.init(f.type, &@field(outer, f.name), a),
+                        else => {},
+                    }
+                }
+            }
+            break :blk null;
+        };
+        const arena = std.heap.ArenaAllocator.init(a);
+        const writer: std.Io.Writer.Allocating = .init(a);
+        return @This(){
+            .arena = arena,
+            .writer = writer,
+            .iterated_field_name = iterated_field_name,
+            .iterated_field = field,
+            .iterated_field_iter_ctx = field_iter_ctx,
+            .start_pos = lexer.pos,
+            .prev_token = prev_token,
+            .lexer = lexer,
+            .json_opts = json_opts,
+        };
+    }
+
+    pub fn deinit(self: *@This(), a: Allocator) void {
+        self.arena.deinit();
+        self.writer.deinit();
+        if (self.iterated_field_iter_ctx) |*ctx| {
+            ctx.deinit(a);
         }
+    }
 
-        pub fn deinit(self: *@This()) void {
-            self.arena.deinit();
-            self.writer.deinit();
+    pub fn visit(self: *@This(), val: anytype) Error!void {
+        const visit_log = std.log.scoped(.visitor);
+        var in_expression = false;
+        while (try self.lexer.nextToken()) |tok| {
+            // change to debug
+            visit_log.warn(
+                \\On token: {any}
+            , .{tok.typ});
+            switch (tok.typ) {
+                .for_open => {
+                    // const bytes = try handleForOpen(scope.*, lexer, a, json_opts);
+                    // try scope.writer.writer.writeAll(bytes);
+                },
+                .for_close => self.closed = true,
+                .marker_close => if (self.closed) return,
+                .expression_open => {
+                    if (in_expression) {
+                        visit_log.err(
+                            \\ Encountered an .expression_open token inside of an expression
+                        , .{});
+                        return error.SyntaxInvalid;
+                    } else in_expression = true;
+                },
+                .expression_close => {
+                    if (self.current_access) |*opts| {
+                        const fieldname_to_check = if (opts.field_name.len > 1) opts.field_name[1..] else null;
+                        const writeLambda = struct {
+                            fn write(s: Type.Struct, fieldname_check: []const u8, v: anytype, writer: *std.Io.Writer, ser_opts: *SerializeOptions) anyerror!void {
+                                inline for (s.fields) |f| {
+                                    if (std.mem.eql(u8, f.name, fieldname_check)) {
+                                        ser_opts.field_name = fieldname_check;
+                                        writeField(v, writer, ser_opts.*) catch |e| {
+                                            visit_log.err(
+                                                \\ Failed to writefield: {any}
+                                            , .{e});
+                                            return e;
+                                        };
+                                    }
+                                }
+                            }
+                        }.write;
+                        write_field: {
+                            if (fieldname_to_check) |name| {
+                                switch (@typeInfo(@TypeOf(val))) {
+                                    .@"struct" => |st| {
+                                        writeLambda(st, name, val, &self.writer.writer, opts) catch return error.CannotSerialize;
+                                        break :write_field;
+                                    },
+                                    .pointer => |ptr| {
+                                        if (ptr.size == .one) {
+                                            switch (@typeInfo(ptr.child)) {
+                                                .@"struct" => |st| {
+                                                    writeLambda(st, name, val.*, &self.writer.writer, opts) catch return error.CannotSerialize;
+                                                    break :write_field;
+                                                },
+                                                else => {},
+                                            }
+                                        }
+                                    },
+                                    else => {},
+                                }
+                                visit_log.err(
+                                    \\ Expected the type of val to be a struct or pointer to single struct, got: {any}
+                                , .{@typeInfo(@TypeOf(val))});
+                                return error.InvalidNext;
+                            } else {
+                                try writeType(@TypeOf(val), val, &self.writer.writer, opts.*);
+                            }
+                        }
+                    }
+                    self.current_access = null;
+                    in_expression = false;
+                },
+                .access => {
+                    if (!in_expression) {
+                        visit_log.err(
+                            \\ Encountered .access token outside of an expression
+                        , .{});
+                        return error.SyntaxInvalid;
+                    }
+                    if (self.current_access != null) {
+                        visit_log.err(
+                            \\ Encountered .access token in loop before resolving previous
+                        , .{});
+                        return error.SyntaxInvalid;
+                    }
+                    visit_log.debug(
+                        \\ EXPRESSION: {any}
+                        \\ ACCESS: {any}
+                        \\ LITERAL: {s}
+                    , .{
+                        in_expression,
+                        self.current_access,
+                        tok.literal,
+                    });
+                    self.current_access = .{
+                        .field_name = tok.literal,
+                    };
+                },
+                .json => {
+                    if (!in_expression) {
+                        visit_log.err(
+                            \\ Encountered .json token outside of an expression
+                        , .{});
+                        return error.SyntaxInvalid;
+                    }
+                    if (self.current_access == null) {
+                        visit_log.err(
+                            \\ Encountered .json token before an .access token
+                        , .{});
+                        return error.SyntaxInvalid;
+                    }
+                    self.current_access.?.json = &self.json_opts;
+                },
+
+                else => if (!in_expression and (tok.typ == .literal or tok.typ.isWhitespace())) {
+                    if (should_append: {
+                        if (!tok.typ.isWhitespace()) break :should_append true;
+                        break :should_append switch (self.prev_token) {
+                            .expression_open,
+                            .access,
+                            .json,
+                            .marker_open,
+                            .for_close,
+                            => false,
+                            .marker_close => tok.typ == .space,
+                            else => true,
+                        };
+                    }) {
+                        if (tok.typ.isWhitespace()) visit_log.debug("Appending {any} after {any}", .{ tok.typ, self.prev_token });
+                        try self.writer.writer.writeAll(tok.literal);
+                    }
+                },
+            }
+            if (!tok.typ.isWhitespace()) self.prev_token = tok.typ;
         }
-    };
+    }
+};
 
+pub fn Template(comptime Context: type) type {
     return struct {
         context: Context,
         const Self = @This();
         pub fn init(ctx: Context) Self {
             return .{ .context = ctx };
-        }
-
-        fn handleNext(
-            self: *Self,
-            a: Allocator,
-            next: anytype,
-            lexer: *Lexer,
-            scope: *ForScope,
-            json_opts: std.json.Stringify.Options,
-        ) Error!void {
-            var in_expression = false;
-            while (try lexer.nextToken()) |tok| {
-                // change to debug
-                log.warn(
-                    \\On token: {any}
-                , .{tok.typ});
-                switch (tok.typ) {
-                    .for_open => {
-                        const bytes = try self.handleForOpen(scope.*, lexer, a, json_opts);
-                        try scope.writer.writer.writeAll(bytes);
-                    },
-                    .for_close => scope.closed = true,
-                    .marker_close => if (scope.closed) return,
-                    .expression_open => {
-                        if (in_expression) {
-                            log.err(
-                                \\ Encountered an .expression_open token inside of an expression
-                            , .{});
-                            return error.SyntaxInvalid;
-                        } else in_expression = true;
-                    },
-                    .expression_close => {
-                        if (scope.current_access) |*opts| {
-                            const fieldname_to_check = if (opts.field_name.len > 1) opts.field_name[1..] else null;
-
-                            if (fieldname_to_check) |name| {
-                                switch (@typeInfo(@TypeOf(next))) {
-                                    .@"struct" => |st| {
-                                        inline for (st.fields) |f| {
-                                            if (std.mem.eql(u8, f.name, name)) {
-                                                opts.field_name = name;
-                                                writeField(next, &scope.writer.writer, opts.*) catch |e| {
-                                                    log.err(
-                                                        \\ Failed to writefield: {any}
-                                                    , .{e});
-                                                    return e;
-                                                };
-                                            }
-                                        }
-                                    },
-                                    else => return error.InvalidNext,
-                                }
-                            } else {
-                                try writeType(@TypeOf(next), next, &scope.writer.writer, opts.*);
-                            }
-                        }
-                        scope.current_access = null;
-                        in_expression = false;
-                    },
-                    .access => {
-                        if (!in_expression) {
-                            log.err(
-                                \\ Encountered .access token outside of an expression
-                            , .{});
-                            return error.SyntaxInvalid;
-                        }
-                        if (scope.current_access != null) {
-                            log.err(
-                                \\ Encountered .access token in loop before resolving previous
-                            , .{});
-                            return error.SyntaxInvalid;
-                        }
-                        log.debug(
-                            \\ EXPRESSION: {any}
-                            \\ ACCESS: {any}
-                            \\ LITERAL: {s}
-                        , .{
-                            in_expression,
-                            scope.current_access,
-                            tok.literal,
-                        });
-                        scope.current_access = .{
-                            .field_name = tok.literal,
-                        };
-                    },
-                    .json => {
-                        if (!in_expression) {
-                            log.err(
-                                \\ Encountered .json token outside of an expression
-                            , .{});
-                            return error.SyntaxInvalid;
-                        }
-                        if (scope.current_access == null) {
-                            log.err(
-                                \\ Encountered .json token before an .access token
-                            , .{});
-                            return error.SyntaxInvalid;
-                        }
-                        scope.current_access.?.json = &json_opts;
-                    },
-
-                    else => if (!in_expression and (tok.typ == .literal or tok.typ.isWhitespace())) {
-                        if (should_append: {
-                            if (!tok.typ.isWhitespace()) break :should_append true;
-                            break :should_append switch (scope.prev_token) {
-                                .expression_open,
-                                .access,
-                                .json,
-                                .marker_open,
-                                .for_close,
-                                => false,
-                                .marker_close => tok.typ == .space,
-                                else => true,
-                            };
-                        }) {
-                            if (tok.typ.isWhitespace()) log.debug("Appending {any} after {any}", .{ tok.typ, scope.prev_token });
-                            try scope.writer.writer.writeAll(tok.literal);
-                        }
-                    },
-                }
-                if (!tok.typ.isWhitespace()) scope.prev_token = tok.typ;
-            }
-        }
-
-        fn handleForOpen(self: *Self, outer_scope: ?ForScope, lexer: *Lexer, a: Allocator, json_opts: std.json.Stringify.Options) Error![]u8 {
-            const access = try lexer.expectNextNonWhitespace(.access);
-            _ = try lexer.expectNextNonWhitespace(.marker_close);
-            const start_pos = lexer.pos;
-
-            var sani_literal_needs_freeing = false;
-            const sani_literal = blk: {
-                if (std.mem.allEqual(u8, access.literal, '.')) {
-                    const sc = outer_scope orelse {
-                        log.err(
-                            \\ Encountered an access literal consisting entirely of '.' in a top-level for loop
-                        , .{});
-                        return error.SyntaxInvalid;
-                    };
-                    sani_literal_needs_freeing = true;
-                    break :blk try std.fmt.allocPrint(a, "{s}{s}", .{ sc.iterated_field_name, access.literal[1..] });
-                }
-                break :blk access.literal[1..];
-            };
-
-            defer if (sani_literal_needs_freeing) a.free(sani_literal);
-
-            log.warn("Attempting to grab iterate for '{s}'", .{sani_literal});
-
-            // remove this loop after dbugging
-            for (ContextIterableFields.iter_dispatch_map.keys()) |k| {
-                log.warn("KEY: '{s}'", .{k});
-            }
-
-            var iter_dispatch = blk: {
-                if (outer_scope) |sc| {
-                    const key = try std.fmt.allocPrint(a, "{s}.{s}", .{ sc.iterated_field_name, sani_literal });
-                    log.warn("key: {s}", .{key});
-                    defer a.free(key);
-                    break :blk ContextIterableFields.iter_dispatch_map.get(key);
-                } else break :blk ContextIterableFields.iter_dispatch_map.get(sani_literal);
-            } orelse return error.CannotIterate;
-
-            const current_depth: ContextIterableFields.PTag =
-                if (outer_scope) |s|
-                    @enumFromInt((@intFromEnum(s.current_depth) + 1) % ContextIterableFields.AMT_TAG_VARIANTS)
-                else
-                    @enumFromInt(0);
-
-            var current_scope = ForScope{
-                .writer = std.Io.Writer.Allocating.init(a),
-                .arena = std.heap.ArenaAllocator.init(a),
-                .start_pos = start_pos,
-                .prev_token = .marker_close,
-                .iterated_field_name = sani_literal,
-                .current_depth = current_depth,
-                .iterator = iter_dispatch,
-            };
-
-            var un = ContextIterableFields.initParentUnion(current_scope.current_depth, self.context);
-            const iter = iter_dispatch.createFunc(a, &un);
-            defer iter_dispatch.destroyFunc(a, iter);
-
-            log.debug(
-                \\ FOR LOOP OPENED
-                \\ SCOPE: {f}
-            , .{current_scope});
-
-            defer current_scope.deinit();
-
-            const HandleNextArgs = struct {
-                self: *Self,
-                a: Allocator,
-                lexer: *Lexer,
-                current_scope: *ForScope,
-                true_position: *?usize,
-                json_opts: std.json.Stringify.Options,
-            };
-
-            var true_position: ?usize = null;
-
-            while (iter_dispatch.getNext(iter)) {
-                try iter_dispatch.doWithCurrent(struct {
-                    fn do(current: anytype, args: HandleNextArgs) Error!void {
-                        try args.self.handleNext(args.a, current, args.lexer, args.current_scope, args.json_opts);
-                        args.current_scope.prev_token = .marker_close;
-                        if (args.true_position.* == null) args.true_position.* = args.lexer.pos;
-                        log.warn("resetting lexer position from {d} to {d}", .{ args.lexer.pos, args.current_scope.start_pos });
-
-                        args.lexer.pos = args.current_scope.start_pos;
-                    }
-                }.do, HandleNextArgs{
-                    .self = self,
-                    .a = a,
-                    .lexer = lexer,
-                    .current_scope = &current_scope,
-                    .true_position = &true_position,
-                    .json_opts = json_opts,
-                });
-            }
-
-            log.debug(
-                \\ FOR LOOP CLOSED
-            , .{});
-            lexer.pos = true_position.?;
-
-            return current_scope.writer.toOwnedSlice();
         }
 
         pub fn render(self: *Self, a: Allocator, template_string: []const u8, json_opts: std.json.Stringify.Options) Error![]u8 {
@@ -291,6 +252,7 @@ pub fn Template(comptime Context: type) type {
             defer out.deinit();
             var lexer = Lexer.init(template_string[0..]);
             defer lexer.deinit();
+
             var prev_token: ?Token.Type = null;
             var current_access: ?SerializeOptions = null;
 
@@ -345,12 +307,19 @@ pub fn Template(comptime Context: type) type {
                             };
                         }) {
                             log.debug("Appending {any} after {any}", .{ token.typ, prev_token });
-                            try out.writer.writeByte(token.literal[0]);
+                            try out.writer.writeAll(token.literal);
                         }
                     },
 
                     .for_open => {
-                        const slice = try self.handleForOpen(null, &lexer, a, json_opts);
+                        const slice = try handleForOpen(
+                            Context,
+                            &self.context,
+                            &lexer,
+                            prev_token orelse return error.SyntaxInvalid,
+                            a,
+                            json_opts,
+                        );
                         defer a.free(slice);
                         prev_token = .marker_close;
                         log.debug(
@@ -566,4 +535,42 @@ fn writeField(
     }
 
     return error.CannotSerialize;
+}
+
+fn handleForOpen(outer_type: type, outer: anytype, lexer: *Lexer, prev_token: Token.Type, a: Allocator, json_opts: std.json.Stringify.Options) Error![]u8 {
+    const access = try lexer.expectNextNonWhitespace(.access);
+    _ = try lexer.expectNextNonWhitespace(.marker_close);
+    // const start_pos = lexer.pos;
+
+    // var sani_literal_needs_freeing = false;
+
+    const sani_literal = access.literal[1..];
+    // defer if (sani_literal_needs_freeing) a.free(sani_literal);
+
+    var scope = try IterationScope.init(
+        outer_type,
+        outer,
+        a,
+        sani_literal,
+        lexer,
+        prev_token,
+        json_opts,
+    );
+    defer scope.deinit(a);
+
+    log.warn("Attempting to grab iterate for '{s}'", .{sani_literal});
+
+    var true_position: ?usize = null;
+    while (scope.iterated_field.next()) |n| {
+        try scope.iterated_field.visit(&scope, n);
+        if (true_position == null) true_position = scope.lexer.pos;
+        scope.lexer.pos = scope.start_pos;
+    }
+
+    log.debug(
+        \\ FOR LOOP CLOSED
+    , .{});
+    lexer.pos = true_position.?;
+
+    return scope.writer.toOwnedSlice();
 }

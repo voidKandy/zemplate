@@ -145,9 +145,9 @@ fn renderTest() !void {
         \\    <script type="application/json">
         \\    [{"num":420},{"num":69}]
         \\    </script>
-        \\        <div style='{"background_color":"black","font_size":10}' hx-get="myGet0" id="myId0">
+        \\    <div style='{"background_color":"black","font_size":10}' hx-get="myGet0" id="myId0">
         \\    </div>
-        \\        <div style='{"background_color":"white","font_size":12}' hx-get="myGet1" id="myId1">
+        \\    <div style='{"background_color":"white","font_size":12}' hx-get="myGet1" id="myId1">
         \\    </div>
         \\    
         \\  </div>
@@ -159,5 +159,13 @@ fn renderTest() !void {
     const render = try tmpl.render(allocator, @embedFile("test.html"), .{ .whitespace = .minified });
     defer allocator.free(render);
 
-    logDiff(expected, render);
+    logDiff(expected, render) catch |e| {
+        std.log.err(
+            \\Expected:
+            \\{s}
+            \\Got:
+            \\{s}
+        , .{ expected, render });
+        return e;
+    };
 }

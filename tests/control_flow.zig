@@ -21,7 +21,6 @@ test "control flow" {
             }
         }
     }.run);
-    std.testing.log_level = .warn;
 }
 
 const Failure = struct {

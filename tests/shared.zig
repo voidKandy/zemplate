@@ -3,22 +3,22 @@ const std = @import("std");
 pub fn runTest(comptime name: []const u8, run_fn: anytype) void {
     const log = std.log.scoped(.TestRunner);
     log.warn(
-        \\ '{s}' Test {s}{s}STARTING {s}
+        \\ {s}'{s}' Test {s}STARTING {s}
         \\
-    , .{ name, ansi.BOLD, ansi.BLUE, ansi.RESET });
+    , .{ ansi.BLUE, name, ansi.BOLD, ansi.RESET });
 
     run_fn() catch |e| {
         log.err(
-            \\ '{s}' Test {s}{s}FAILED{s} 
+            \\ {s}'{s}' Test {s}FAILED{s} 
             \\
-        , .{ name, ansi.BOLD, ansi.RED, ansi.RESET });
+        , .{ ansi.RED, name, ansi.BOLD, ansi.RESET });
         @panic(@errorName(e));
     };
 
     log.warn(
-        \\ '{s}' Test {s}{s}PASSED{s}
+        \\ {s}'{s}' Test {s}PASSED{s}
         \\
-    , .{ name, ansi.BOLD, ansi.GREEN, ansi.RESET });
+    , .{ ansi.GREEN, name, ansi.BOLD, ansi.RESET });
 }
 
 const ansi = struct {
@@ -30,7 +30,7 @@ const ansi = struct {
     pub const BOLD = "\x1b[1m";
 };
 
-pub fn logDiff(expected: []const u8, actual: []const u8) void {
+pub fn logDiff(expected: []const u8, actual: []const u8) !void {
     if (std.mem.indexOfDiff(u8, expected, actual)) |idx| {
         const start = @max(idx, @as(usize, 10)) - 10;
         const end_expected = @min(expected.len, idx + 10);
@@ -51,6 +51,7 @@ pub fn logDiff(expected: []const u8, actual: []const u8) void {
             actual[idx], actual[idx],
         });
 
-        return;
+        return error.DiffExists;
     }
+    return;
 }
