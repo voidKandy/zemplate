@@ -145,9 +145,9 @@ fn renderTest() !void {
         \\    <script type="application/json">
         \\    [{"num":420},{"num":69}]
         \\    </script>
-        \\    <div style='{"background_color":"black","font_size":10}' hx-get="myGet0" id="myId0">
+        \\        <div style='{"background_color":"black","font_size":10}' hx-get="myGet0" id="myId0">
         \\    </div>
-        \\    <div style='{"background_color":"white","font_size":12}' hx-get="myGet1" id="myId1">
+        \\        <div style='{"background_color":"white","font_size":12}' hx-get="myGet1" id="myId1">
         \\    </div>
         \\    
         \\  </div>

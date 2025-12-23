@@ -21,7 +21,7 @@ pub fn runTest(comptime name: []const u8, run_fn: anytype) void {
     , .{ ansi.GREEN, name, ansi.BOLD, ansi.RESET });
 }
 
-const ansi = struct {
+pub const ansi = struct {
     pub const RESET = "\x1b[0m";
     pub const RED = "\x1b[31m";
     pub const GREEN = "\x1b[32m";

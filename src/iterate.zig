@@ -434,7 +434,7 @@ pub fn IterableFields(comptime Context: type) type {
 }
 
 /// using std.mem.eql on two comptime strings can sometimes return false positives
-inline fn sliceEqualComptime(a: []const u8, b: []const u8) bool {
+pub inline fn sliceEqualComptime(a: []const u8, b: []const u8) bool {
     if (a.len != b.len) return false;
     inline for (a, 0..) |c, i| {
         if (c != b[i]) return false;

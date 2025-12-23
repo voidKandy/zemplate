@@ -2,7 +2,8 @@ const std = @import("std");
 const zemplate = @import("zemplate");
 const print = std.debug.print;
 const panic = std.debug.panic;
-const runTest = @import("shared.zig").runTest;
+const shared = @import("shared.zig");
+const runTest = shared.runTest;
 
 test "control flow" {
     std.testing.log_level = .debug;
@@ -17,6 +18,11 @@ test "control flow" {
                         \\ {f}
                         \\
                     , .{ case.name, failure });
+                } else {
+                    print(
+                        \\ {s}{s} CASE PASSED!{s}
+                        \\
+                    , .{ shared.ansi.GREEN, case.name, shared.ansi.RESET });
                 }
             }
         }
@@ -89,7 +95,7 @@ fn ForLoopTestCase(comptime TemplateContext: type) type {
         pub fn runTest(self: @This(), a: std.mem.Allocator) anyerror!?Failure {
             var tmpl = Template.init(self.ctx);
             const got = try tmpl.render(a, self.content, .{ .whitespace = .minified });
-            defer a.free(got);
+            // defer a.free(got);
             return Failure.checkForFailure(got, self.expected);
         }
     };
