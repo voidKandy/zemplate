@@ -11,6 +11,15 @@ pub const SerializeOptions = struct {
     index: ?usize = null,
 };
 
+/// using std.mem.eql on two comptime strings can sometimes return false positives
+pub inline fn sliceEqualComptime(a: []const u8, b: []const u8) bool {
+    if (a.len != b.len) return false;
+    inline for (a, 0..) |c, i| {
+        if (c != b[i]) return false;
+    }
+    return true;
+}
+
 pub inline fn writeType(T: type, inst: anytype, writer: *std.Io.Writer, opts: SerializeOptions) Error!void {
     if (@TypeOf(inst) != T) @panic(@typeName(T) ++ " =! " ++ @typeName(@TypeOf(inst)));
     log.debug("Trying writetype: {s}", .{@typeName(T)});

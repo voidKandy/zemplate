@@ -72,7 +72,7 @@ fn structIteration() !void {
     };
 
     {
-        var iter = (try zemplate.iterate.StructFieldIterator(@TypeOf(parent), "strings")).fromParentPtr(&parent);
+        var iter = zemplate.iterate.StructFieldIterator(@TypeOf(parent), "strings").fromParentPtr(&parent);
         var i: usize = 0;
         while (iter.next()) |n| : (i += 1) {
             if (!std.mem.eql(u8, n.*, expected_strings[i])) {
@@ -87,7 +87,7 @@ fn structIteration() !void {
         }
     }
     {
-        var iter = (try zemplate.iterate.StructFieldIterator(@TypeOf(parent), "structs")).fromParentPtr(&parent);
+        var iter = zemplate.iterate.StructFieldIterator(@TypeOf(parent), "structs").fromParentPtr(&parent);
         var i: usize = 0;
         while (iter.next()) |n| : (i += 1) {
             if (!n.eql(expected_structs[i])) {

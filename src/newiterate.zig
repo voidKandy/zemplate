@@ -24,6 +24,7 @@ pub fn StructIterationContext(VisitorCtx: type) type {
 
     return struct {
         fields: std.StaticStringMap(Field),
+        contexts: std.StaticStringMap(*@This()),
         arena: std.heap.ArenaAllocator,
 
         pub const Field = struct {
@@ -74,28 +75,62 @@ pub fn StructIterationContext(VisitorCtx: type) type {
         };
 
         pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
-            try writer.print("Visitor Context: {s}", .{@typeName(VisitorCtx)});
-            try writer.writeAll("Fields With Iterators: \n");
+            try writer.print("\nVisitor Context: {s}", .{@typeName(VisitorCtx)});
+            try writer.writeAll("\nFields With Iterators: \n");
             for (self.fields.keys()) |k| {
                 try writer.print("{s}\n", .{k});
             }
+            try writer.writeAll("\nFields With Own Contexts: \n");
+            for (self.contexts.keys()) |k| {
+                try writer.print(
+                    \\ {s}:
+                    \\ {f}
+                , .{ k, self.contexts.get(k).? });
+            }
         }
 
-        pub fn init(comptime T: type, instance: anytype, allocator: std.mem.Allocator) !@This() {
+        pub fn init(
+            comptime T: type,
+            instance: anytype,
+            allocator: std.mem.Allocator,
+        ) !@This() {
+            log.warn(
+                \\ IterCtx.init entry
+                \\ T: {s}
+                \\ instance T: {s}
+            , .{ @typeName(T), @typeName(@TypeOf(instance)) });
+            if (@typeInfo(T) != .@"struct") {
+                log.err("Could not get IterCtx for {s}", .{@typeName(T)});
+                return error.InvalidType;
+            }
             const info = @typeInfo(T).@"struct";
             std.debug.assert(@TypeOf(instance) == *T);
             var arena = std.heap.ArenaAllocator.init(allocator);
             const a = arena.allocator();
 
             var fields: std.ArrayList(struct { []const u8, Field }) = try .initCapacity(a, info.fields.len);
+            var ctxs: std.ArrayList(struct { []const u8, *@This() }) = try .initCapacity(a, info.fields.len);
+
             inline for (info.fields) |f| {
-                const I = @import("root.zig").iterate.StructFieldIterator(T, f.name) catch continue;
+                _ = @import("iterate.zig").validateParentAndFieldName(T, f.name) catch {
+                    // BAD? maybe this validation should be moved to its own function as it should match any validation this `init` function does
+                    if (@typeInfo(f.type) == .@"struct") {
+                        const nested = try a.create(@This());
+                        nested.* = try @This().init(f.type, &@field(instance, f.name), a);
+                        try ctxs.append(a, .{ f.name, nested });
+                    }
+                    continue;
+                };
+
+                const I = @import("iterate.zig").StructFieldIterator(T, f.name);
+
                 const inst = try a.create(I);
                 inst.* = I.fromParentPtr(instance);
 
                 const visitorImpl = struct {
                     fn visitWrapper(ctx: *VisitorCtx, value: *const anyopaque) Error!void {
                         const typed = @as(*const I.Item, @ptrCast(@alignCast(value)));
+                        log.warn("using casted  *const {s}", .{@typeName(I.Item)});
                         return visitorFunc(ctx, typed);
                     }
                 }.visitWrapper;
@@ -104,21 +139,30 @@ pub fn StructIterationContext(VisitorCtx: type) type {
                     fn nextWrapper(opaq: *anyopaque) ?*const anyopaque {
                         var op: *I = @ptrCast(@alignCast(opaq));
                         const next: *const I.Item = op.next() orelse return null;
+                        log.warn("Next value casted  *const {s}", .{@typeName(I.Item)});
                         return @ptrCast(next);
                     }
                 }.nextWrapper;
 
                 try fields.append(a, .{ f.name, Field.init(inst, &nextImpl, &visitorImpl) });
             }
-            const map_arr = try fields.toOwnedSlice(a);
+            const fields_map_arr = try fields.toOwnedSlice(a);
+            const ctxs_map_arr = try ctxs.toOwnedSlice(a);
             return .{
-                .fields = try std.StaticStringMap(Field).init(map_arr, allocator),
+                .fields = try std.StaticStringMap(Field).init(fields_map_arr, a),
+                .contexts = try std.StaticStringMap(*@This()).init(ctxs_map_arr, a),
                 .arena = arena,
             };
         }
 
         pub fn deinit(self: *@This(), allocator: Allocator) void {
-            self.fields.deinit(allocator);
+            // for (self.contexts.values()) |v| {
+            //     v.deinit(allocator);
+            // }
+            _ = allocator;
+            self.fields.deinit(self.arena.allocator());
+            self.contexts.deinit(self.arena.allocator());
+
             self.arena.deinit();
         }
     };

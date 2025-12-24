@@ -1,6 +1,7 @@
 const std = @import("std");
 const log = std.log.scoped(.iterate);
 const eql = std.mem.eql;
+const util = @import("util.zig");
 const Type = std.builtin.Type;
 const Allocator = std.mem.Allocator;
 const Error = @import("root.zig").Error;
@@ -27,7 +28,11 @@ pub inline fn UnwrapIterableChild(comptime T: type) ?type {
     return child_opt;
 }
 
-pub fn StructFieldIterator(comptime Parent: type, comptime field_name: []const u8) error{ NotIterable, ParentNotStruct, InvalidFieldName }!type {
+pub inline fn validateParentAndFieldName(comptime Parent: type, comptime field_name: []const u8) error{ NotIterable, ParentNotStruct, InvalidFieldName }!struct {
+    type_info: Type,
+    ItemType: type,
+    FieldType: type,
+} {
     const FieldType = blk: {
         const info = @typeInfo(Parent);
         switch (info) {
@@ -36,7 +41,7 @@ pub fn StructFieldIterator(comptime Parent: type, comptime field_name: []const u
         }
 
         inline for (info.@"struct".fields) |f| {
-            if (eql(u8, f.name, field_name))
+            if (util.sliceEqualComptime(f.name, field_name))
                 break :blk f.type;
         }
 
@@ -48,6 +53,19 @@ pub fn StructFieldIterator(comptime Parent: type, comptime field_name: []const u
     const ItemType = UnwrapIterableChild(FieldType) orelse {
         return error.NotIterable;
     };
+
+    return .{
+        .ItemType = ItemType,
+        .FieldType = FieldType,
+        .type_info = field_type_info,
+    };
+}
+
+pub fn StructFieldIterator(comptime Parent: type, comptime field_name: []const u8) type {
+    const info = validateParentAndFieldName(Parent, field_name) catch @compileError("Cannot make struct field iterator from " ++ @typeName(Parent));
+    const FieldType = info.FieldType;
+    const ItemType = info.ItemType;
+    const field_type_info = info.type_info;
 
     return struct {
         instance: FieldType,
@@ -421,7 +439,7 @@ pub fn IterableFields(comptime Context: type) type {
                         return @unionInit(PUnion, PARENT_UNION_OUTERMOST_TAG_NAME, context);
                     } else {
                         inline for (context_type_info.@"struct".fields) |sf| {
-                            if (sliceEqualComptime(sf.name, uf.name)) {
+                            if (util.sliceEqualComptime(sf.name, uf.name)) {
                                 return @unionInit(PUnion, uf.name, @field(context, sf.name));
                             }
                         }
@@ -431,13 +449,4 @@ pub fn IterableFields(comptime Context: type) type {
             @panic("could not init union for tag");
         }
     };
-}
-
-/// using std.mem.eql on two comptime strings can sometimes return false positives
-pub inline fn sliceEqualComptime(a: []const u8, b: []const u8) bool {
-    if (a.len != b.len) return false;
-    inline for (a, 0..) |c, i| {
-        if (c != b[i]) return false;
-    }
-    return true;
 }
