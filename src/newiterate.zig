@@ -93,7 +93,7 @@ pub fn StructIterationContext(VisitorCtx: type) type {
             comptime T: type,
             instance: anytype,
             allocator: std.mem.Allocator,
-        ) !@This() {
+        ) Error!@This() {
             log.warn(
                 \\ IterCtx.init entry
                 \\ T: {s}

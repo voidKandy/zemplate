@@ -43,23 +43,40 @@ const Failure = struct {
     pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print(
             \\ Render mismatch at index {d}
+        , .{self.index});
+        try writer.print(
             \\ Expected context ({}..{}): "{s}"
-            \\ Actual   context ({}..{}): "{s}"
-            \\ Expected char: '{c}' (byte {d})
-            \\ Actual   char: '{c}' (byte {d})
         , .{
-            self.index,
             self.start,
             self.exp_end,
             self.exp_ctx,
+        });
+        try writer.print(
+            \\ Actual   context ({}..{}): "{s}"
+        , .{
             self.start,
             self.got_end,
             self.got_ctx,
-            self.expected[self.index],
-            self.expected[self.index],
-            self.got[self.index],
-            self.got[self.index],
         });
+        if (self.index < self.expected.len)
+            try writer.print(
+                \\ Expected char: '{c}' (byte {d})
+            , .{
+                self.expected[self.index],
+                self.expected[self.index],
+            })
+        else
+            try writer.writeAll("Given index is too large for expected content\n");
+
+        if (self.index < self.got.len)
+            try writer.print(
+                \\ Actual   char: '{c}' (byte {d})
+            , .{
+                self.got[self.index],
+                self.got[self.index],
+            })
+        else
+            try writer.writeAll("Given index is too large for got content\n");
     }
 
     fn checkForFailure(got: []const u8, expected: []const u8) ?Failure {
@@ -95,7 +112,7 @@ fn ForLoopTestCase(comptime TemplateContext: type) type {
         pub fn runTest(self: @This(), a: std.mem.Allocator) anyerror!?Failure {
             var tmpl = Template.init(self.ctx);
             const got = try tmpl.render(a, self.content, .{ .whitespace = .minified });
-            // defer a.free(got);
+            defer a.free(got);
             return Failure.checkForFailure(got, self.expected);
         }
     };
@@ -158,28 +175,35 @@ const ALL_THREE_ITERABLE_CASES = &[_]ForLoopTestCase(ThreeIterableCtx){
         .name = "nested for loops",
         .content =
         \\||zz for .structs zz||
+        \\{{.inner_string}}
         \\||zz for .inner_string zz||
-        \\ {{..}} - {{.}}
+        \\ {{.}}
         \\||zz endfor zz||
+        \\{{.inner_string}}
         \\||zz endfor zz||
         \\
         ,
         .expected =
-        \\ myTest1 - m
-        \\ myTest1 - y
-        \\ myTest1 - T
-        \\ myTest1 - e
-        \\ myTest1 - s
-        \\ myTest1 - t
-        \\ myTest1 - 1
+        \\myTest1
+        \\ m
+        \\ y
+        \\ T
+        \\ e
+        \\ s
+        \\ t
+        \\ 1
         \\
-        \\ myTest2 - m
-        \\ myTest2 - y
-        \\ myTest2 - T
-        \\ myTest2 - e
-        \\ myTest2 - s
-        \\ myTest2 - t
-        \\ myTest2 - 2
+        \\myTest1
+        \\myTest2
+        \\ m
+        \\ y
+        \\ T
+        \\ e
+        \\ s
+        \\ t
+        \\ 2
+        \\
+        \\myTest2
         \\
         \\
         ,
