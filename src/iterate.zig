@@ -2,6 +2,7 @@ const std = @import("std");
 const log = std.log.scoped(.iterate);
 const eql = std.mem.eql;
 const util = @import("util.zig");
+const comptimePrint = std.fmt.comptimePrint;
 const Type = std.builtin.Type;
 const Allocator = std.mem.Allocator;
 const Error = @import("root.zig").Error;
@@ -97,356 +98,207 @@ pub fn StructFieldIterator(comptime Parent: type, comptime field_name: []const u
     };
 }
 
-inline fn getAmtIterableFields(comptime T: type) usize {
-    switch (@typeInfo(T)) {
-        .@"struct" => |s| {
-            var amt_cannot: usize = 0;
-            inline for (s.fields) |f| {
-                if (UnwrapIterableChild(f.type) == null) amt_cannot += 1;
-            }
-            return s.fields.len - amt_cannot;
-        },
-        else => return 0,
-    }
+fn getVisitorFunc(T: type) !*const fn (*T, anytype) Error!void {
+    if (!@hasDecl(T, "visit")) return error.MethodNotPresent;
+    return @field(T, "visit");
 }
 
-const Field = struct {
-    name: []const u8,
-    type: type,
-    // parent: type,
+pub fn StructIterationContext(VisitorCtx: type) type {
+    const visitorFunc = getVisitorFunc(VisitorCtx) catch @compileError("Visitor Ctx has no public visit method");
+    const NextFunc = *fn (
+        *anyopaque,
+    ) ?*const anyopaque;
 
-    fn fromStructField(f: Type.StructField) @This() {
-        return .{ .name = f.name, .type = f.type };
-    }
-    fn fromFieldWithParentFieldName(field: @This(), parent_field_name: []const u8) @This() {
-        const name = std.fmt.comptimePrint("{s}.{s}", .{ parent_field_name, field.name });
-        return .{ .name = name, .type = field.type };
-    }
+    const VisitFunc = *fn (
+        *VisitorCtx,
+        *const anyopaque,
+    ) Error!void;
 
-    fn nameInfo(self: @This()) struct {
-        parent_name: ?[]const u8,
-        field_name: []const u8,
-    } {
-        var iter = std.mem.splitBackwardsScalar(u8, self.name, '.');
-        const field_name = iter.first();
-        const parent_name =
-            if (iter.next()) |n| n else null;
-        return .{ .field_name = field_name, .parent_name = parent_name };
-    }
-};
-
-pub fn IterableFields(comptime Context: type) type {
-    const context_type_info = @typeInfo(Context);
-    switch (context_type_info) {
-        .@"struct" => {},
-        else => @compileError("Cannot get iterable fields of non struct type: " ++ @typeName(Context)),
-    }
-
-    const PARENT_UNION_OUTERMOST_TAG_NAME = @typeName(Context);
-    const AMT_ITERABLE_FIELDS = getAmtIterableFields(Context);
-    const AMT_CHILDREN_WITH_ITERABLE_FIELDS = blk: {
-        var n = 0;
-        inline for (context_type_info.@"struct".fields) |f| {
-            if (getAmtIterableFields(f.type) > 0)
-                n += 1;
-        }
-        break :blk n;
-    };
-
-    const CHILDREN_DATA: struct {
-        /// flattened total amount of fields;
-        /// the sum of all iterable fields per child
-        total_fields: usize,
-        map: std.StaticStringMap(Field),
-
-        inline fn get() @This() {
-            var amt: usize = 0;
-            var len: usize = 0;
-            var tmp: [AMT_CHILDREN_WITH_ITERABLE_FIELDS]struct { []const u8, Field } = undefined;
-            inline for (context_type_info.@"struct".fields) |f| {
-                const n = getAmtIterableFields(f.type);
-                amt += n;
-                if (n > 0) {
-                    tmp[len] = .{ f.name, Field.fromStructField(f) };
-                    len += 1;
-                }
-            }
-            const arr = tmp[0..len];
-            return .{
-                .total_fields = amt,
-                .map = std.StaticStringMap(Field).initComptime(arr),
-            };
-        }
-    } = .get();
-
-    const TOTAL_ITERABLE_FIELDS = CHILDREN_DATA.total_fields + AMT_ITERABLE_FIELDS;
-
-    const ITERABLE_FIELDS_DATA: struct {
-        /// Flattened list of all Fields that need to have an entry in the outermost 'map'
-        /// Fields of the outermost `T` are added if they are, in fact iterable
-        /// Fields of inner fields that have iterable fields are also added
-        all_fields: [TOTAL_ITERABLE_FIELDS]Field = undefined,
-        /// The indices at which the parent `T` of the flattened fields are stored here
-        change_indices: [AMT_CHILDREN_WITH_ITERABLE_FIELDS]usize = undefined,
-
-        inline fn get() @This() {
-            var all_fields: [TOTAL_ITERABLE_FIELDS]Field = undefined;
-            var change_indices: [AMT_CHILDREN_WITH_ITERABLE_FIELDS]usize = undefined;
-
-            var i: usize = 0;
-            inline for (context_type_info.@"struct".fields) |f| {
-                if (UnwrapIterableChild(f.type) != null) {
-                    all_fields[i] = Field.fromStructField(f);
-                    i += 1;
-                }
-            }
-            const children_fields = CHILDREN_DATA.map.values();
-            if (children_fields.len != AMT_CHILDREN_WITH_ITERABLE_FIELDS)
-                @compileError("Children fields length does not equal AMT_CHILDREN_WITH_ITERABLE_FIELDS");
-
-            for (0..AMT_CHILDREN_WITH_ITERABLE_FIELDS) |j| {
-                const field = children_fields[j];
-                change_indices[j] = i;
-                for (IterableFields(field.type).all_iterable_struct_fields) |f| {
-                    all_fields[i] = Field.fromFieldWithParentFieldName(f, field.name);
-                    i += 1;
-                }
-            }
-
-            return .{
-                .all_fields = all_fields,
-                .change_indices = change_indices,
-            };
-        }
-    } = .get();
-
-    const ReturnUnionCreationData = struct {
-        un_fields: [TOTAL_ITERABLE_FIELDS]Type.UnionField = undefined,
-        en_fields: [TOTAL_ITERABLE_FIELDS]Type.EnumField = undefined,
-    };
-
-    const ParentUnionCreationData = struct {
-        un_fields: [AMT_CHILDREN_WITH_ITERABLE_FIELDS + 1]Type.UnionField = undefined,
-        en_fields: [AMT_CHILDREN_WITH_ITERABLE_FIELDS + 1]Type.EnumField = undefined,
-    };
-
-    const UNION_CREATION_DATA: struct {
-        return_union: ReturnUnionCreationData,
-        parent_union: ParentUnionCreationData,
-
-        inline fn get() @This() {
-            var return_union_dat = ReturnUnionCreationData{};
-            var parent_union_dat = ParentUnionCreationData{};
-
-            inline for (ITERABLE_FIELDS_DATA.all_fields, 0..) |iter_fld, i| {
-                const Typ = UnwrapIterableChild(iter_fld.type).?;
-                const name = iter_fld.name[0..iter_fld.name.len :0];
-                return_union_dat.un_fields[i] =
-                    Type.UnionField{
-                        .alignment = @alignOf(Typ),
-                        .name = name,
-                        .type = Typ,
-                    };
-                return_union_dat.en_fields[i] =
-                    Type.EnumField{
-                        .value = i,
-                        .name = name,
-                    };
-            }
-
-            parent_union_dat.un_fields[0] =
-                Type.UnionField{
-                    .alignment = @alignOf(Context),
-                    .name = PARENT_UNION_OUTERMOST_TAG_NAME,
-                    .type = Context,
-                };
-            parent_union_dat.en_fields[0] =
-                Type.EnumField{
-                    .value = 0,
-                    .name = PARENT_UNION_OUTERMOST_TAG_NAME,
-                };
-            inline for (CHILDREN_DATA.map.values(), 1..) |v, i| {
-                const name = v.name[0.. :0];
-                parent_union_dat.un_fields[i] =
-                    Type.UnionField{
-                        .alignment = @alignOf(v.type),
-                        .name = name,
-                        .type = v.type,
-                    };
-                parent_union_dat.en_fields[i] =
-                    Type.EnumField{
-                        .value = i,
-                        .name = name,
-                    };
-            }
-            return .{ .return_union = return_union_dat, .parent_union = parent_union_dat };
-        }
-    } = .get();
-
-    const ReturnTag =
-        @Type(Type{
-            .@"enum" = .{
-                .fields = &UNION_CREATION_DATA.return_union.en_fields,
-                .tag_type = u32,
-                .decls = &[_]Type.Declaration{},
-                .is_exhaustive = true,
-            },
-        });
-    const ReturnUnion =
-        @Type(Type{
-            .@"union" = .{
-                .fields = &UNION_CREATION_DATA.return_union.un_fields,
-                .decls = &[_]Type.Declaration{},
-                .tag_type = ReturnTag,
-                .layout = .auto,
-            },
-        });
-
-    const ParentTag =
-        @Type(Type{
-            .@"enum" = .{
-                .fields = &UNION_CREATION_DATA.parent_union.en_fields,
-                .tag_type = u32,
-                .decls = &[_]Type.Declaration{},
-                .is_exhaustive = true,
-            },
-        });
-
-    const ParentUnion =
-        @Type(Type{
-            .@"union" = .{
-                .fields = &UNION_CREATION_DATA.parent_union.un_fields,
-                .decls = &[_]Type.Declaration{},
-                .tag_type = ParentTag,
-                .layout = .auto,
-            },
-        });
-
-    const CreateFieldIterFunc = *const fn (std.mem.Allocator, *ParentUnion) *anyopaque;
-    const DestroyFieldIterFunc = *const fn (std.mem.Allocator, *anyopaque) void;
-    const NextItemFunc = *const fn (*anyopaque) ?ReturnUnion;
-    const IterDispatch = struct {
-        createFunc: CreateFieldIterFunc,
-        destroyFunc: DestroyFieldIterFunc,
-        nextFunc: NextItemFunc,
-        current: ?ReturnUnion = null,
-
-        pub fn getNext(self: *@This(), instance: *anyopaque) bool {
-            const n = self.nextFunc(instance) orelse {
-                self.current = null;
-                return false;
-            };
-            self.current = n;
-            return true;
-        }
-
-        pub fn doWithCurrent(self: @This(), func: anytype, args: anytype) Error!void {
-            switch (@typeInfo(@TypeOf(func))) {
-                .@"fn" => |f| {
-                    _ = f;
-                    // if (f.params[1].type != @TypeOf(args)) @compileError("func argument must take args as second parameter");
-                },
-                else => @compileError("func argument must be a function"),
-            }
-            inline for (ITERABLE_FIELDS_DATA.all_fields) |f| {
-                if (std.mem.eql(u8, f.name, @tagName(self.current.?))) {
-                    const current = @field(self.current.?, f.name);
-                    try func(current, args);
-                }
-            }
-        }
-    };
-
-    var iterator_wrapper_arr: [TOTAL_ITERABLE_FIELDS]struct {
-        []const u8,
-        IterDispatch,
-    } = undefined;
-
-    var next_change_index: ?usize = if (ITERABLE_FIELDS_DATA.change_indices.len > 0) ITERABLE_FIELDS_DATA.change_indices[0] else null;
-    var current_parent: ParentTag = @enumFromInt(0);
-    inline for (ITERABLE_FIELDS_DATA.all_fields, &iterator_wrapper_arr, 0..) |f, *item, i| {
-        if (next_change_index != null and next_change_index.? == i) {
-            const index = @intFromEnum(current_parent) + 1;
-            current_parent = @enumFromInt(index);
-            next_change_index = if (ITERABLE_FIELDS_DATA.change_indices.len > index) ITERABLE_FIELDS_DATA.change_indices[index] else null;
-        }
-        const name_info = f.nameInfo();
-        const parent_name = @tagName(current_parent);
-
-        if (name_info.parent_name) |n|
-            if (!eql(u8, n, parent_name)) @compileError("Expected " ++ n ++ " and " ++ parent_name ++ " to be the same");
-
-        const ParentType = @FieldType(ParentUnion, parent_name);
-
-        item.*.@"0" = f.name;
-
-        const I = StructFieldIterator(ParentType, name_info.field_name);
-
-        const createFn = struct {
-            fn fromParentWrapper(a: std.mem.Allocator, parent_u: *ParentUnion) *anyopaque {
-                var parent = @field(parent_u, parent_name);
-                const instance = a.create(I) catch @panic("out of memory");
-                instance.* = I.fromParentPtr(&parent);
-                const opaq: *anyopaque = @ptrCast(instance);
-                return opaq;
-            }
-        }.fromParentWrapper;
-        const destroyFn = struct {
-            fn destroy(a: std.mem.Allocator, inst: *anyopaque) void {
-                const instance: *I = @ptrCast(@alignCast(inst));
-                a.destroy(instance);
-            }
-        }.destroy;
-        const nextFn = struct {
-            fn nextWrapper(inst: *anyopaque) ?ReturnUnion {
-                var instance: *I = @ptrCast(@alignCast(inst));
-                const next = instance.next() orelse return null;
-                return @unionInit(ReturnUnion, f.name, next);
-            }
-        }.nextWrapper;
-        item.@"1" = IterDispatch{
-            .createFunc = createFn,
-            .destroyFunc = destroyFn,
-            .nextFunc = nextFn,
-        };
-    }
-
-    if (iterator_wrapper_arr.len == 0) {
-        @compileError("iterator_wrapper_arr is empty");
-    }
-
-    for (iterator_wrapper_arr) |e| {
-        if (e.@"0".len == 0) {
-            @compileError("empty key in StaticStringMap");
-        }
-    }
-
-    const map = std.StaticStringMap(IterDispatch).initComptime(iterator_wrapper_arr);
     return struct {
-        pub const all_iterable_struct_fields = ITERABLE_FIELDS_DATA.all_fields;
-        pub const Dispatch = IterDispatch;
-        pub const PUnion = ParentUnion;
-        pub const PTag = ParentTag;
-        pub const iter_dispatch_map = map;
-        pub const AMT_TAG_VARIANTS: usize = std.meta.fields(PTag).len;
+        fields: std.StaticStringMap(Field),
+        contexts: std.StaticStringMap(*@This()),
+        arena: std.heap.ArenaAllocator,
 
-        pub fn initParentUnion(tag: PTag, context: Context) PUnion {
-            const is_top_level_access = @intFromEnum(tag) == 0;
+        pub const Field = struct {
+            /// pointer to type instance
+            instance_ptr: usize,
+            /// pointer to function that takes instance and returns next value
+            next_fn_ptr: usize,
+            visit_fn_ptr: usize,
 
-            inline for (@typeInfo(PUnion).@"union".fields) |uf| {
-                if (eql(u8, @tagName(tag), uf.name)) {
-                    if (is_top_level_access) {
-                        return @unionInit(PUnion, PARENT_UNION_OUTERMOST_TAG_NAME, context);
-                    } else {
-                        inline for (context_type_info.@"struct".fields) |sf| {
-                            if (util.sliceEqualComptime(sf.name, uf.name)) {
-                                return @unionInit(PUnion, uf.name, @field(context, sf.name));
-                            }
-                        }
-                    }
+            fn validateInitArgs(instance: anytype, next_func: anytype, visit_func: anytype) void {
+                const instance_info = @typeInfo(@TypeOf(instance));
+                validateFunctionType(visit_func, VisitFunc);
+                validateFunctionType(next_func, NextFunc);
+
+                if (!validate_instance: switch (instance_info) {
+                    .pointer => break :validate_instance true,
+                    else => break :validate_instance false,
+                }) {
+                    @compileError("instance argument must be a pointer to a instancetion");
                 }
             }
-            @panic("could not init union for tag");
+
+            pub fn init(instance: anytype, next_func: anytype, visit_func: anytype) @This() {
+                validateInitArgs(instance, next_func, visit_func);
+                return .{
+                    .instance_ptr = @intFromPtr(instance),
+                    .next_fn_ptr = @intFromPtr(next_func),
+                    .visit_fn_ptr = @intFromPtr(visit_func),
+                };
+            }
+
+            pub fn next(self: @This()) ?*const anyopaque {
+                return @call(.auto, @as(
+                    NextFunc,
+                    @ptrFromInt(self.next_fn_ptr),
+                ), .{
+                    @as(*anyopaque, @ptrFromInt(self.instance_ptr)),
+                });
+            }
+
+            pub fn visit(self: @This(), ctx: *VisitorCtx, value: *const anyopaque) Error!void {
+                return @call(
+                    .auto,
+                    @as(VisitFunc, @ptrFromInt(self.visit_fn_ptr)),
+                    .{ ctx, value },
+                );
+            }
+        };
+
+        pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+            try writer.print("\nVisitor Context: {s}", .{@typeName(VisitorCtx)});
+            try writer.writeAll("\nFields With Iterators: \n");
+            for (self.fields.keys()) |k| {
+                try writer.print("{s}\n", .{k});
+            }
+            try writer.writeAll("\nFields With Own Contexts: \n");
+            for (self.contexts.keys()) |k| {
+                try writer.print(
+                    \\ {s}:
+                    \\ {f}
+                , .{ k, self.contexts.get(k).? });
+            }
+        }
+
+        pub fn init(
+            comptime T: type,
+            instance: anytype,
+            allocator: std.mem.Allocator,
+        ) Error!@This() {
+            log.warn(
+                \\ IterCtx.init entry
+                \\ T: {s}
+                \\ instance T: {s}
+            , .{ @typeName(T), @typeName(@TypeOf(instance)) });
+            if (@typeInfo(T) != .@"struct") {
+                log.err("Could not get IterCtx for {s}", .{@typeName(T)});
+                return error.InvalidType;
+            }
+            const info = @typeInfo(T).@"struct";
+            std.debug.assert(@TypeOf(instance) == *T);
+            var arena = std.heap.ArenaAllocator.init(allocator);
+            const a = arena.allocator();
+
+            var fields: std.ArrayList(struct { []const u8, Field }) = try .initCapacity(a, info.fields.len);
+            var ctxs: std.ArrayList(struct { []const u8, *@This() }) = try .initCapacity(a, info.fields.len);
+
+            inline for (info.fields) |f| {
+                _ = validateParentAndFieldName(T, f.name) catch {
+                    // BAD? maybe this validation should be moved to its own function as it should match any validation this `init` function does
+                    if (@typeInfo(f.type) == .@"struct") {
+                        const nested = try a.create(@This());
+                        nested.* = try @This().init(f.type, &@field(instance, f.name), a);
+                        try ctxs.append(a, .{ f.name, nested });
+                    }
+                    continue;
+                };
+
+                const I = StructFieldIterator(T, f.name);
+
+                const inst = try a.create(I);
+                inst.* = I.fromParentPtr(instance);
+
+                const visitorImpl = struct {
+                    fn visitWrapper(ctx: *VisitorCtx, value: *const anyopaque) Error!void {
+                        const typed = @as(*const I.Item, @ptrCast(@alignCast(value)));
+                        log.warn("using casted  *const {s}", .{@typeName(I.Item)});
+                        return visitorFunc(ctx, typed);
+                    }
+                }.visitWrapper;
+
+                const nextImpl = struct {
+                    fn nextWrapper(opaq: *anyopaque) ?*const anyopaque {
+                        var op: *I = @ptrCast(@alignCast(opaq));
+                        const next: *const I.Item = op.next() orelse return null;
+                        log.warn("Next value casted  *const {s}", .{@typeName(I.Item)});
+                        return @ptrCast(next);
+                    }
+                }.nextWrapper;
+
+                try fields.append(a, .{ f.name, Field.init(inst, &nextImpl, &visitorImpl) });
+            }
+            const fields_map_arr = try fields.toOwnedSlice(a);
+            const ctxs_map_arr = try ctxs.toOwnedSlice(a);
+            return .{
+                .fields = try std.StaticStringMap(Field).init(fields_map_arr, a),
+                .contexts = try std.StaticStringMap(*@This()).init(ctxs_map_arr, a),
+                .arena = arena,
+            };
+        }
+
+        pub fn deinit(self: *@This(), allocator: Allocator) void {
+            // for (self.contexts.values()) |v| {
+            //     v.deinit(allocator);
+            // }
+            _ = allocator;
+            self.fields.deinit(self.arena.allocator());
+            self.contexts.deinit(self.arena.allocator());
+
+            self.arena.deinit();
         }
     };
+}
+
+inline fn validateFunctionType(func: anytype, TargetType: type) void {
+    comptime {
+        const func_info = @typeInfo(@TypeOf(func));
+        const expected_info = @typeInfo(TargetType);
+
+        const f = blk: {
+            if (func_info == .pointer) {
+                const inner = @typeInfo(func_info.pointer.child);
+                if (inner == .@"fn") {
+                    break :blk inner.@"fn";
+                }
+            }
+            @compileError("Expected func to be a function pointer. Found " ++
+                @typeName(@TypeOf(func)));
+        };
+        const ef = @typeInfo(expected_info.pointer.child).@"fn";
+
+        if (f.params.len != ef.params.len) {
+            @compileError(comptimePrint("Expected func to have {d} parameters", .{ef.params.len}));
+        }
+
+        for (f.params[0..], ef.params[0..], 1..) |p, ep, i| {
+            if (p.type != ep.type)
+                @compileError(comptimePrint("Expected func's argument {d} to be of type:  {s} Found: {s}", .{
+                    i,
+                    @typeName(ep.type.?),
+                    @typeName(p.type.?),
+                }));
+        }
+
+        if (!ret: {
+            const ret_info = @typeInfo(f.return_type orelse break :ret false);
+            const eret_info = @typeInfo(ef.return_type orelse break :ret false);
+
+            break :ret (std.meta.eql(eret_info, ret_info));
+        }) {
+            @compileError("Expected func's return type to be " ++ @typeName(ef.return_type.?) ++
+                " Found " ++
+                @typeName(f.return_type.?));
+        }
+    }
 }

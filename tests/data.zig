@@ -130,7 +130,7 @@ fn customIterator() !void {
                 },
             },
         };
-    var ctx = try zemplate.newiterate.StructIterationContext(VisitorCtx).init(ThreeIterableCtx, &inst, std.testing.allocator);
+    var ctx = try zemplate.iterate.StructIterationContext(VisitorCtx).init(ThreeIterableCtx, &inst, std.testing.allocator);
     defer ctx.deinit(std.testing.allocator);
     var vctx: VisitorCtx = .{};
 

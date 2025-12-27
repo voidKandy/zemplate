@@ -11,15 +11,8 @@ const Error = @import("root.zig").Error;
 const util = @import("util.zig");
 const SerializeOptions = util.SerializeOptions;
 
-fn NestedValue(T: type) type {
-    return struct {
-        instance: T,
-        node: std.SinglyLinkedList.Node = .{},
-    };
-}
-
 const IterationScope = struct {
-    const IterCtx = @import("newiterate.zig").StructIterationContext(@This());
+    const IterCtx = @import("iterate.zig").StructIterationContext(@This());
 
     arena: std.heap.ArenaAllocator,
     writer: std.Io.Writer.Allocating,
