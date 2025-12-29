@@ -11,7 +11,8 @@ test "control flow" {
         fn run() !void {
             const allocator = std.testing.allocator;
             for (ALL_THREE_ITERABLE_CASES) |case| {
-                if (try case.runTest(allocator)) |failure| {
+                if (try case.runTest(allocator)) |*failure| {
+                    defer failure.deinit(allocator);
                     panic(
                         \\
                         \\ {s} Test Failed:
@@ -36,8 +37,8 @@ const Failure = struct {
     got_end: usize,
     exp_ctx: []const u8,
     got_ctx: []const u8,
-    expected: []const u8,
-    got: []const u8,
+    expected: []u8,
+    got: []u8,
 
     const CONTEXT_SIZE = 10;
     pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
@@ -79,14 +80,16 @@ const Failure = struct {
             try writer.writeAll("Given index is too large for got content\n");
     }
 
-    fn checkForFailure(got: []const u8, expected: []const u8) ?Failure {
+    fn checkForFailure(a: std.mem.Allocator, got: []const u8, expected: []const u8) ?Failure {
         const idx = std.mem.indexOfDiff(u8, expected, got) orelse return null;
         const start = @max(idx, @as(usize, Failure.CONTEXT_SIZE)) - Failure.CONTEXT_SIZE;
         const end_expected = @min(expected.len, idx + Failure.CONTEXT_SIZE);
         const end_actual = @min(got.len, idx + Failure.CONTEXT_SIZE);
+        const my_got = a.dupe(u8, got) catch @panic("out of memory");
+        const my_expected = a.dupe(u8, expected) catch @panic("out of memory");
 
-        const exp_ctx = expected[start..end_expected];
-        const act_ctx = got[start..end_actual];
+        const exp_ctx = my_expected[start..end_expected];
+        const act_ctx = my_got[start..end_actual];
         return .{
             .index = idx,
             .start = start,
@@ -94,9 +97,14 @@ const Failure = struct {
             .got_end = end_actual,
             .exp_ctx = exp_ctx,
             .got_ctx = act_ctx,
-            .expected = expected,
-            .got = got,
+            .expected = my_expected,
+            .got = my_got,
         };
+    }
+
+    fn deinit(self: *@This(), a: std.mem.Allocator) void {
+        a.free(self.got);
+        a.free(self.expected);
     }
 };
 
@@ -113,16 +121,17 @@ fn ForLoopTestCase(comptime TemplateContext: type) type {
             var tmpl = Template.init(self.ctx);
             const got = try tmpl.render(a, self.content, .{ .whitespace = .minified });
             defer a.free(got);
-            return Failure.checkForFailure(got, self.expected);
+            return Failure.checkForFailure(a, got, self.expected);
         }
     };
 }
 
-const TypeWithInnerString = struct { inner_string: []const u8 };
+const TypeWithInnerString = struct { inner_string: []const u8 = "" };
 const ThreeIterableCtx = struct {
     outer_field: []const u8 = "",
     array: []const []const u8 = &[_][]const u8{},
     structs: []const TypeWithInnerString = &[_]TypeWithInnerString{},
+    inner_struct: TypeWithInnerString = .{},
 };
 
 const ALL_THREE_ITERABLE_CASES = &[_]ForLoopTestCase(ThreeIterableCtx){
@@ -182,6 +191,9 @@ const ALL_THREE_ITERABLE_CASES = &[_]ForLoopTestCase(ThreeIterableCtx){
         \\{{.inner_string}}
         \\||zz endfor zz||
         \\
+        \\||zz for .inner_struct.inner_string zz||
+        \\ {{.}}
+        \\||zz endfor zz||
         ,
         .expected =
         \\myTest1
@@ -206,11 +218,25 @@ const ALL_THREE_ITERABLE_CASES = &[_]ForLoopTestCase(ThreeIterableCtx){
         \\myTest2
         \\
         \\
+        \\ W
+        \\ a
+        \\ t
+        \\ e
+        \\ r
+        \\ m
+        \\ e
+        \\ l
+        \\ o
+        \\ n
+        \\
         ,
         .ctx = .{
             .structs = &[_]TypeWithInnerString{
                 .{ .inner_string = "myTest1" },
                 .{ .inner_string = "myTest2" },
+            },
+            .inner_struct = TypeWithInnerString{
+                .inner_string = "Watermelon",
             },
         },
     },
