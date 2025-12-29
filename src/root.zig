@@ -3,10 +3,12 @@ const render = @import("render.zig");
 pub const Template = render.Template;
 pub const iterate = @import("iterate.zig");
 pub const Lexer = @import("Lexer.zig");
+pub const util = @import("util.zig");
 pub const Token = @import("Token.zig");
 
 pub const Error = error{
     SyntaxInvalid,
+    InvalidType,
     InvalidNext,
     CannotSerialize,
     CannotIterate,

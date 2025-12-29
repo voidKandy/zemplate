@@ -1,8 +1,14 @@
 const std = @import("std");
 const zemplate = @import("zemplate");
 const print = std.debug.print;
+const runTest = @import("shared.zig").runTest;
 
-test "custom iterator" {
+test "data" {
+    runTest("CUSTOM ITERATOR", customIterator);
+    runTest("STRUCT ITERATION", structIteration);
+}
+
+fn structIteration() !void {
     const OtherStruct = struct {
         other_string: []const u8,
     };
@@ -69,13 +75,13 @@ test "custom iterator" {
         var iter = zemplate.iterate.StructFieldIterator(@TypeOf(parent), "strings").fromParentPtr(&parent);
         var i: usize = 0;
         while (iter.next()) |n| : (i += 1) {
-            if (!std.mem.eql(u8, n, expected_strings[i])) {
+            if (!std.mem.eql(u8, n.*, expected_strings[i])) {
                 std.log.err(
                     \\ Expected:
                     \\ {s}
                     \\ Got:
                     \\ {s}
-                , .{ expected_strings[i], n });
+                , .{ expected_strings[i], n.* });
                 @panic("failed");
             }
         }
@@ -95,5 +101,41 @@ test "custom iterator" {
             }
         }
     }
-    print("ITERATOR Test PASSED", .{});
+}
+
+const TypeWithInnerString = struct { inner_string: []const u8 };
+const ThreeIterableCtx = struct {
+    outer_field: []const u8 = "",
+    array: []const []const u8 = &[_][]const u8{},
+    structs: []const TypeWithInnerString = &[_]TypeWithInnerString{},
+};
+
+const VisitorCtx = struct {
+    pub fn visit(self: *@This(), val: anytype) zemplate.Error!void {
+        _ = self;
+        _ = val;
+    }
+};
+
+fn customIterator() !void {
+    var inst =
+        ThreeIterableCtx{
+            .outer_field = "some string",
+            .array = &[_][]const u8{
+                "data", "other data",
+            },
+            .structs = &[_]TypeWithInnerString{
+                .{
+                    .inner_string = "Inner",
+                },
+            },
+        };
+    var ctx = try zemplate.iterate.StructIterationContext(VisitorCtx).init(ThreeIterableCtx, &inst, std.testing.allocator);
+    defer ctx.deinit(std.testing.allocator);
+    var vctx: VisitorCtx = .{};
+
+    for (ctx.fields.values()) |f| {
+        const n = f.next() orelse continue;
+        try f.visit(&vctx, n);
+    }
 }

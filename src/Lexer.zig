@@ -88,16 +88,17 @@ pub fn peekNextNth(self: *Self, nth: usize) ?*const u8 {
 fn readWord(self: *Self) usize {
     const start_pos = self.pos;
     while (self.peekNext()) |ch| {
-        log.debug("next char: {c}", .{ch.*});
+        // log.debug("next char: {c}", .{ch.*});
         const encountered_keyword = blk: {
             if (Token.FirstCharMap.get().get(ch.*)) |keywords| {
                 for (keywords) |kw| {
                     const window_start = self.pos;
                     const window_end = window_start + kw.len;
                     log.debug(
-                        \\ Checking equality of: {s}
+                        \\ Checking equality of:
+                        \\ '{s}'
                         \\ and
-                        \\ {s}
+                        \\ '{s}'
                     , .{ self.input[window_start..window_end], kw });
                     if (std.mem.eql(u8, self.input[window_start..window_end], kw)) {
                         const typ = Token.keyword_map.get(kw).?;
@@ -202,7 +203,6 @@ pub fn nextToken(self: *Self) Error!?Token {
     slice_start = self.pos;
 
     if (token_opt) |token| {
-        log.debug("Potential Token: {f}", .{token});
         if (!token.typ.isWhitespace())
             self.prev_token = token.typ;
 
@@ -219,7 +219,7 @@ pub fn nextToken(self: *Self) Error!?Token {
             self.between_markers = false;
         }
 
-        log.debug("Got Token:\n{f}", .{token});
+        log.debug("Got Token: {f}", .{token});
     }
     return token_opt;
 }
