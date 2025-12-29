@@ -29,6 +29,10 @@ pub inline fn UnwrapIterableChild(comptime T: type) ?type {
     return child_opt;
 }
 
+/// validates that `Parent` _is_ a `struct` & that `field_name` is a field of `Parent` and is an iterable type
+/// returns `@typeInfo(Parent)`, the `type` of the field that matches `field_name` and the iterable child `type` of the field's type
+///
+/// For example, if the field's type is `[]const u8` *ItemType* will be `u8`, *FieldType* will be `[]const u8`
 pub inline fn validateParentAndFieldName(comptime Parent: type, comptime field_name: []const u8) error{ NotIterable, ParentNotStruct, InvalidFieldName }!struct {
     type_info: Type,
     ItemType: type,
@@ -115,6 +119,7 @@ pub fn StructIterationContext(VisitorCtx: type) type {
     ) Error!void;
 
     return struct {
+        /// Fields which can be iterated
         fields: std.StaticStringMap(Field),
         contexts: std.StaticStringMap(*@This()),
         arena: std.heap.ArenaAllocator,
@@ -172,13 +177,42 @@ pub fn StructIterationContext(VisitorCtx: type) type {
             for (self.fields.keys()) |k| {
                 try writer.print("{s}\n", .{k});
             }
-            try writer.writeAll("\nFields With Own Contexts: \n");
-            for (self.contexts.keys()) |k| {
-                try writer.print(
-                    \\ {s}:
-                    \\ {f}
-                , .{ k, self.contexts.get(k).? });
+            if (self.contexts.keys().len > 0) {
+                try writer.writeAll("\nFields With Own Contexts: \n");
+                for (self.contexts.keys()) |k| {
+                    try writer.print(
+                        \\ {s}:
+                        \\ ---
+                        \\ {f}
+                        \\ ---
+                    , .{ k, self.contexts.get(k).? });
+                }
             }
+        }
+
+        pub fn getField(
+            self: *@This(),
+            fieldname: []const u8,
+        ) ?Field {
+            log.debug(
+                \\ Attempting to get field for fieldname: '{s}'
+            , .{fieldname});
+            const field = self.fields.get(fieldname) orelse {
+                if (std.mem.indexOfScalar(u8, fieldname, '.')) |idx| {
+                    const main_field = fieldname[0..idx];
+                    if (self.contexts.get(main_field)) |ctx|
+                        return ctx.getField(fieldname[idx + 1 ..]);
+                    log.err(
+                        \\ Expected to have context for '{s}'
+                    , .{main_field});
+                } else {
+                    log.err(
+                        \\ Fieldname with mismatch does not include period: '{s}'
+                    , .{fieldname});
+                }
+                return null;
+            };
+            return field;
         }
 
         pub fn init(

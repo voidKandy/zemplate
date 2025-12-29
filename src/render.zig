@@ -57,8 +57,7 @@ const IterationScope = struct {
         var iter_ctx = try IterCtx.init(OuterType, outer, a);
         // defer iter_ctx.deinit(a);
         log.warn("Created iteration context: \n{f}\n", .{iter_ctx});
-        const field = iter_ctx.fields.get(iterated_field_name) orelse return error.CannotIterate;
-
+        const field = iter_ctx.getField(iterated_field_name) orelse return error.CannotIterate;
         const arena = std.heap.ArenaAllocator.init(a);
         const writer: std.Io.Writer.Allocating = .init(a);
         return @This(){
@@ -78,29 +77,6 @@ const IterationScope = struct {
         self.writer.deinit();
         self.iter_ctx.deinit(a);
     }
-
-    // pub fn handleForLoop(self: *@This()) ![]u8 {
-    //     var true_position: ?usize = null;
-
-    //     while (self.iterated_field.next()) |n| {
-    //         log.warn(
-    //             \\ got next
-    //             \\ addr: {any}
-    //             \\ T: {s}
-    //         , .{ n, @typeName(@TypeOf(n)) });
-    //         try self.iterated_field.visit(self, n);
-    //         if (true_position == null) true_position = self.lexer.pos;
-    //         self.lexer.pos = self.start_pos;
-    //         self.prev_token = .marker_close;
-    //     }
-
-    //     log.debug(
-    //         \\ FOR LOOP CLOSED
-    //     , .{});
-    //     self.lexer.pos = true_position.?;
-
-    //     return self.writer.toOwnedSlice();
-    // }
 
     /// This function is what handles a "next iteration" of some field of the parent struct
     pub fn visit(self: *@This(), val: anytype) Error!void {
