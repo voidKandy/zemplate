@@ -56,7 +56,7 @@ const IterationScope = struct {
 
         var iter_ctx = try IterCtx.init(OuterType, outer, a);
         // defer iter_ctx.deinit(a);
-        log.warn("Created iteration context: \n{f}\n", .{iter_ctx});
+        log.debug("Created iteration context: \n{f}\n", .{iter_ctx});
         const field = iter_ctx.getField(iterated_field_name) orelse return error.CannotIterate;
         const arena = std.heap.ArenaAllocator.init(a);
         const writer: std.Io.Writer.Allocating = .init(a);
@@ -245,7 +245,7 @@ fn handleForOpen(
     const sani_literal = access.literal[1..];
     // defer if (sani_literal_needs_freeing) a.free(sani_literal);
 
-    log.warn("Attempting to grab iterate for '{s}'", .{sani_literal});
+    log.debug("Attempting to grab iterate for '{s}'", .{sani_literal});
 
     var scope: IterationScope = try .init(
         OuterType,
@@ -258,7 +258,7 @@ fn handleForOpen(
     defer scope.deinit(a);
     var true_position: ?usize = null;
     while (scope.iterated_field.next()) |n| {
-        log.warn(
+        log.debug(
             \\ got next
             \\ addr: {any}
             \\ T: {s}

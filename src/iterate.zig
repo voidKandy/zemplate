@@ -220,7 +220,7 @@ pub fn StructIterationContext(VisitorCtx: type) type {
             instance: anytype,
             allocator: std.mem.Allocator,
         ) Error!@This() {
-            log.warn(
+            log.debug(
                 \\ IterCtx.init entry
                 \\ T: {s}
                 \\ instance T: {s}
@@ -256,7 +256,7 @@ pub fn StructIterationContext(VisitorCtx: type) type {
                 const visitorImpl = struct {
                     fn visitWrapper(ctx: *VisitorCtx, value: *const anyopaque) Error!void {
                         const typed = @as(*const I.Item, @ptrCast(@alignCast(value)));
-                        log.warn("using casted  *const {s}", .{@typeName(I.Item)});
+                        log.debug("using casted  *const {s}", .{@typeName(I.Item)});
                         return visitorFunc(ctx, typed);
                     }
                 }.visitWrapper;
@@ -265,7 +265,7 @@ pub fn StructIterationContext(VisitorCtx: type) type {
                     fn nextWrapper(opaq: *anyopaque) ?*const anyopaque {
                         var op: *I = @ptrCast(@alignCast(opaq));
                         const next: *const I.Item = op.next() orelse return null;
-                        log.warn("Next value casted  *const {s}", .{@typeName(I.Item)});
+                        log.debug("Next value casted  *const {s}", .{@typeName(I.Item)});
                         return @ptrCast(next);
                     }
                 }.nextWrapper;
