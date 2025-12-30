@@ -186,7 +186,7 @@ inline fn writeStructField(parent: anytype, st: std.builtin.Type.Struct, writer:
                                 const Nft = @TypeOf(nfield);
                                 var nested_opts = opts;
                                 nested_opts.field_name = nested;
-                                writeType(Nft, nfield, writer, nested_opts) catch |e| {
+                                return writeType(Nft, nfield, writer, nested_opts) catch |e| {
                                     log.err(
                                         \\ Field Type: {s}
                                         \\ Error: {any}
@@ -196,27 +196,35 @@ inline fn writeStructField(parent: anytype, st: std.builtin.Type.Struct, writer:
                             }
                         }
                     },
-                    .pointer => |ptr| {
-                        if (ptr.size == .slice) {
-                            if (std.mem.eql(u8, nested, "len"))
-                                writeType(usize, field.len, writer, opts) catch |e|
-                                    {
-                                        log.err(
-                                            \\ Field Type: {s}
-                                            \\ Error: {any}
-                                        , .{ @typeName(Ft), e });
-                                        return e;
-                                    };
-                        } else {
-                            log.err("Nested field access only supported on structs and slices!", .{});
-                            return error.SyntaxInvalid;
+                    .array => |arr| {
+                        if (std.mem.eql(u8, nested, "len")) {
+                            return writeType(usize, arr.len, writer, opts) catch |e|
+                                {
+                                    log.err(
+                                        \\ Field Type: {s}
+                                        \\ Error: {any}
+                                    , .{ @typeName(Ft), e });
+                                    return e;
+                                };
                         }
                     },
-                    else => {
-                        log.err("Nested field access only supported on structs and slices!", .{});
-                        return error.SyntaxInvalid;
+                    .pointer => |ptr| {
+                        if (ptr.size == .slice and std.mem.eql(u8, nested, "len")) {
+                            return writeType(usize, field.len, writer, opts) catch |e|
+                                {
+                                    log.err(
+                                        \\ Field Type: {s}
+                                        \\ Error: {any}
+                                    , .{ @typeName(Ft), e });
+                                    return e;
+                                };
+                        }
                     },
+                    else => {},
                 }
+
+                log.err("Nested field access only supported on structs and slices!", .{});
+                return error.SyntaxInvalid;
             } else {
                 writeType(Ft, field, writer, opts) catch |e| {
                     log.err(
