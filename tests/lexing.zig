@@ -50,17 +50,262 @@ const LexerTestCase = struct {
 fn lexerTest() !void {
     for (ALL_CASES) |case| {
         if (try case.runTest()) |failure| {
-            panic(
+            std.log.err(
                 \\
                 \\ {s} Test Failed:
                 \\ {f}
                 \\
             , .{ case.name, failure });
+            return error.Failure;
         }
     }
 }
 
 const ALL_CASES = &[_]LexerTestCase{
+    .{
+        .name = "if statements",
+        .content =
+        \\ ||zz if .something zz||
+        \\ {{.}}
+        \\ ||zz if .nested_thing zz||
+        \\ {{.}}
+        \\ ||zz else zz||
+        \\ ||zz endif zz||
+        \\
+        \\ ||zz else zz||
+        \\ ||zz endif zz||
+        ,
+        .expected_tokens = &[_]Token{
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "||zz",
+                .typ = .marker_open,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "if",
+                .typ = .if_open,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = ".something",
+                .typ = .access,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "zz||",
+                .typ = .marker_close,
+            },
+            .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "{{",
+                .typ = .expression_open,
+            },
+            .{
+                .literal = ".",
+                .typ = .access,
+            },
+            .{
+                .literal = "}}",
+                .typ = .expression_close,
+            },
+            .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "||zz",
+                .typ = .marker_open,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "if",
+                .typ = .if_open,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = ".nested_thing",
+                .typ = .access,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "zz||",
+                .typ = .marker_close,
+            },
+            .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "{{",
+                .typ = .expression_open,
+            },
+            .{
+                .literal = ".",
+                .typ = .access,
+            },
+            .{
+                .literal = "}}",
+                .typ = .expression_close,
+            },
+            .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "||zz",
+                .typ = .marker_open,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "else",
+                .typ = .@"else",
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "zz||",
+                .typ = .marker_close,
+            },
+            .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "||zz",
+                .typ = .marker_open,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "endif",
+                .typ = .if_close,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "zz||",
+                .typ = .marker_close,
+            },
+            .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "||zz",
+                .typ = .marker_open,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "else",
+                .typ = .@"else",
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "zz||",
+                .typ = .marker_close,
+            },
+            .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "||zz",
+                .typ = .marker_open,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "endif",
+                .typ = .if_close,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
+                .literal = "zz||",
+                .typ = .marker_close,
+            },
+            .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+        },
+    },
     .{
         .name = "nested for loop",
         .content =

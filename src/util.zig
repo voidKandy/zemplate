@@ -223,7 +223,7 @@ inline fn writeStructField(parent: anytype, st: std.builtin.Type.Struct, writer:
                     else => {},
                 }
 
-                log.err("Nested field access only supported on structs and slices!", .{});
+                log.err("Nested field access only supported on structs, slices and arrays!", .{});
                 return error.SyntaxInvalid;
             } else {
                 writeType(Ft, field, writer, opts) catch |e| {

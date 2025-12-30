@@ -27,7 +27,7 @@ pub inline fn UnwrapIterableChild(comptime T: type) ?type {
 /// returns `@typeInfo(Parent)`, the `type` of the field that matches `field_name` and the iterable child `type` of the field's type
 ///
 /// For example, if the field's type is `[]const u8` *ItemType* will be `u8`, *FieldType* will be `[]const u8`
-pub inline fn validateParentAndFieldName(comptime Parent: type, comptime field_name: []const u8) error{ NotIterable, ParentNotStruct, InvalidFieldName }!struct {
+inline fn validateParentAndFieldName(comptime Parent: type, comptime field_name: []const u8) error{ NotIterable, ParentNotStruct, InvalidFieldName }!struct {
     type_info: Type,
     ItemType: type,
     FieldType: type,

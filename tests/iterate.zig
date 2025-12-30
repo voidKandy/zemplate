@@ -5,8 +5,8 @@ const panic = std.debug.panic;
 const shared = @import("shared.zig");
 const runTest = shared.runTest;
 
-test "control flow" {
-    std.testing.log_level = .debug;
+test "iterate" {
+    std.testing.log_level = .warn;
     runTest("THREE ITERABLES", struct {
         fn run() !void {
             const allocator = std.testing.allocator;
