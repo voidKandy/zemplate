@@ -1,7 +1,6 @@
 comptime {
     _ = @import("iterate.zig");
     _ = @import("conditional.zig");
-    _ = @import("data.zig");
     _ = @import("lexing.zig");
 }
 

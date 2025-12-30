@@ -8,27 +8,27 @@ const runTest = shared.runTest;
 test "conditional" {
     std.testing.log_level = .warn;
 
-    // runTest("THREE CONDITIONALS", struct {
-    //     fn run() !void {
-    //         const allocator = std.testing.allocator;
-    //         for (ALL_THREE_CONDITIONAL_CASES) |case| {
-    //             if (try case.runTest(allocator)) |*failure| {
-    //                 defer failure.deinit(allocator);
-    //                 panic(
-    //                     \\
-    //                     \\ {s} Test Failed:
-    //                     \\ {f}
-    //                     \\
-    //                 , .{ case.name, failure });
-    //             } else {
-    //                 print(
-    //                     \\ {s}{s} CASE PASSED!{s}
-    //                     \\
-    //                 , .{ shared.ansi.GREEN, case.name, shared.ansi.RESET });
-    //             }
-    //         }
-    //     }
-    // }.run);
+    runTest("THREE CONDITIONALS", struct {
+        fn run() !void {
+            const allocator = std.testing.allocator;
+            for (ALL_THREE_CONDITIONAL_CASES) |case| {
+                if (try case.runTest(allocator)) |*failure| {
+                    defer failure.deinit(allocator);
+                    panic(
+                        \\
+                        \\ {s} Test Failed:
+                        \\ {f}
+                        \\
+                    , .{ case.name, failure });
+                } else {
+                    print(
+                        \\ {s}{s} CASE PASSED!{s}
+                        \\
+                    , .{ shared.ansi.GREEN, case.name, shared.ansi.RESET });
+                }
+            }
+        }
+    }.run);
 }
 
 const ThreeConditionalCtx = struct {

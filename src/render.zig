@@ -238,12 +238,53 @@ fn handleForOpen(
     , .{});
     const access = try lexer.expectNextNonWhitespace(.access);
     _ = try lexer.expectNextNonWhitespace(.marker_close);
-    // const start_pos = lexer.pos;
-
-    // var sani_literal_needs_freeing = false;
-
     const sani_literal = access.literal[1..];
-    // defer if (sani_literal_needs_freeing) a.free(sani_literal);
+
+    log.debug("Attempting to grab iterate for '{s}'", .{sani_literal});
+
+    var scope: IterationScope = try .init(
+        OuterType,
+        outer,
+        a,
+        sani_literal,
+        lexer,
+        json_opts,
+    );
+    defer scope.deinit(a);
+    var true_position: ?usize = null;
+    while (scope.iterated_field.next()) |n| {
+        log.debug(
+            \\ got next
+            \\ addr: {any}
+            \\ T: {s}
+        , .{ n, @typeName(@TypeOf(n)) });
+        try scope.iterated_field.visit(&scope, n);
+        if (true_position == null) true_position = scope.lexer.pos;
+        scope.lexer.pos = scope.start_pos;
+        scope.prev_token = .marker_close;
+    }
+
+    log.debug(
+        \\ FOR LOOP CLOSED
+    , .{});
+    scope.lexer.pos = true_position.?;
+
+    return scope.writer.toOwnedSlice();
+}
+
+fn handleIfOpen(
+    OuterType: type,
+    outer: anytype,
+    lexer: *Lexer,
+    a: Allocator,
+    json_opts: std.json.Stringify.Options,
+) Error![]u8 {
+    log.debug(
+        \\ IF STATEMENT OPENED
+    , .{});
+    const access = try lexer.expectNextNonWhitespace(.access);
+    _ = try lexer.expectNextNonWhitespace(.marker_close);
+    const sani_literal = access.literal[1..];
 
     log.debug("Attempting to grab iterate for '{s}'", .{sani_literal});
 
@@ -355,29 +396,16 @@ pub fn Template(comptime Context: type) type {
 
                     .for_open => {
                         const slice = try handleForOpen(Context, &self.context, &lexer, a, json_opts);
-                        // const access = try lexer.expectNextNonWhitespace(.access);
-                        // _ = try lexer.expectNextNonWhitespace(.marker_close);
-                        // const sani_literal = access.literal[1..];
-
-                        // var scope = try IterationScope.init(
-                        //     Context,
-                        //     &self.context,
-                        //     a,
-                        //     sani_literal,
-                        //     &lexer,
-                        //     json_opts,
-                        // );
-                        // defer scope.deinit(a);
-
-                        // const slice = try scope.handleForLoop();
                         defer a.free(slice);
                         prev_token = .marker_close;
-                        // log.debug(
-                        //     \\ Writing to outer writer:
-                        //     \\ [{s}]
-                        // , .{slice});
                         try out.writer.writeAll(slice);
-                        // we cant have prev_token updated, so we continue
+                        continue;
+                    },
+                    .if_open => {
+                        const slice = try handleIfOpen(Context, &self.context, &lexer, a, json_opts);
+                        defer a.free(slice);
+                        prev_token = .marker_close;
+                        try out.writer.writeAll(slice);
                         continue;
                     },
 
