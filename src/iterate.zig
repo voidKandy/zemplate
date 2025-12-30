@@ -16,12 +16,6 @@ pub inline fn UnwrapIterableChild(comptime T: type) ?type {
                 .slice => break :blk p.child,
                 else => break :blk UnwrapIterableChild(p.child),
             },
-            // .@"struct" => |s| {
-            //     // array list check
-            //     if (s.fields.len == 2 and eql(u8, s.fields[0].name, "items") and eql(u8, s.fields[1].name, "capacity")) {
-            //         break :blk @typeInfo(s.fields[0].type).pointer.child;
-            //     }
-            // },
             else => {},
         }
         break :blk null;

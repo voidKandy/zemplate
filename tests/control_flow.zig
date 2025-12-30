@@ -142,9 +142,11 @@ const ALL_THREE_ITERABLE_CASES = &[_]ForLoopTestCase(ThreeIterableCtx){
         \\||zz for .outer_field zz||
         \\ {{.}}
         \\||zz endfor zz||
+        \\Amt array: ||zz .array.len zz||
         \\||zz for .array zz||
         \\ {{ . }}
         \\||zz endfor zz||
+        \\Amt Structs: ||zz .structs.len zz||
         \\||zz for .structs zz||
         \\ {{ .inner_string }}
         \\||zz endfor zz||
@@ -158,10 +160,12 @@ const ALL_THREE_ITERABLE_CASES = &[_]ForLoopTestCase(ThreeIterableCtx){
         \\ l
         \\ d
         \\
+        \\Amt array: 3
         \\ one
         \\ two
         \\ three
         \\
+        \\Amt Structs: 2
         \\ string
         \\ string2
         \\

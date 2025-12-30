@@ -98,9 +98,10 @@ pub inline fn writeType(T: type, inst: anytype, writer: *std.Io.Writer, opts: Se
             }
         },
         .int => |int| {
-            if (int.bits == @bitSizeOf(u8)) {
-                return try writer.writeByte(inst);
-            }
+            return try if (int.bits == @bitSizeOf(u8))
+                writer.writeByte(inst)
+            else
+                writer.print("{d}", .{inst});
         },
         else => {},
     }
@@ -195,8 +196,24 @@ inline fn writeStructField(parent: anytype, st: std.builtin.Type.Struct, writer:
                             }
                         }
                     },
+                    .pointer => |ptr| {
+                        if (ptr.size == .slice) {
+                            if (std.mem.eql(u8, nested, "len"))
+                                writeType(usize, field.len, writer, opts) catch |e|
+                                    {
+                                        log.err(
+                                            \\ Field Type: {s}
+                                            \\ Error: {any}
+                                        , .{ @typeName(Ft), e });
+                                        return e;
+                                    };
+                        } else {
+                            log.err("Nested field access only supported on structs and slices!", .{});
+                            return error.SyntaxInvalid;
+                        }
+                    },
                     else => {
-                        log.err("Nested field access only supported on structs!", .{});
+                        log.err("Nested field access only supported on structs and slices!", .{});
                         return error.SyntaxInvalid;
                     },
                 }
