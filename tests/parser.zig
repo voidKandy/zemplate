@@ -1,21 +1,23 @@
 const std = @import("std");
 const zemplate = @import("zemplate");
+const ast = zemplate.ast;
 const print = std.debug.print;
 const panic = std.debug.panic;
 const runTest = @import("shared.zig").runTest;
 const Lexer = zemplate.Lexer;
+const Parser = zemplate.Parser;
 const Token = zemplate.Token;
 
-test "lexing" {
-    std.testing.log_level = .debug;
-    runTest("LEXING", lexerTest);
+test "parsing" {
+    std.testing.log_level = .warn;
+    runTest("PARSING", parserTest);
 }
 
-const LexerTestCase = struct {
+
+const ParserTestCase = struct {
     name: []const u8,
     content: []const u8,
-    expected_tokens: []const Token,
-    ignore_whitespace: bool = false,
+    expected_statements: []const ast.Statement,
 
     const Failure = struct {
         idx: usize,
@@ -31,29 +33,25 @@ const LexerTestCase = struct {
         }
     };
 
-    fn runTest(self: @This()) anyerror!?Failure {
-        var lexer = Lexer.init(self.content[0..]);
-        defer lexer.deinit();
+    fn runTest(self: @This(), a: std.mem.Allocator) anyerror!?Failure {
+        const lexer = Lexer.init(self.content[0..]);
+        var parser = Parser.init(a, lexer, null);
         var i: usize = 0;
-        var tok = lexer.nextToken();
-        while (tok.typ != .eof) : (tok = lexer.nextToken()) {
-            if (self.ignore_whitespace) {
-                if (tok.typ.isWhitespace()) continue;
-            }
-            if (!self.expected_tokens[i].eql(tok)) {
+        while (try lexer.nextToken()) |next| : (i += 1) {
+            if (!self.expected_tokens[i].eql(next)) {
                 return .{
                     .idx = i,
                     .expected = self.expected_tokens[i],
-                    .got = tok,
+                    .got = next,
                 };
             }
-            i += 1;
         }
         return null;
     }
 };
 
-fn lexerTest() !void {
+
+fn parserTest() !void {
     for (ALL_CASES) |case| {
         if (try case.runTest()) |failure| {
             std.log.err(
@@ -67,13 +65,14 @@ fn lexerTest() !void {
     }
 }
 
-const ALL_CASES = &[_]LexerTestCase{
+
+const ALL_CASES = &[_]ParserTestCase{
     .{
         .name = "if statements",
         .content =
-        \\ ||zz if .something > 34 zz||
+        \\ ||zz if .something zz||
         \\ {|.|}
-        \\ ||zz if .nested_thing == 0 zz||
+        \\ ||zz if .nested_thing zz||
         \\ {|.|}
         \\ ||zz else zz||
         \\ ||zz endif zz||
@@ -81,31 +80,46 @@ const ALL_CASES = &[_]LexerTestCase{
         \\ ||zz else zz||
         \\ ||zz endif zz||
         ,
-        .ignore_whitespace = true,
         .expected_tokens = &[_]Token{
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
             .{
                 .literal = "||zz",
                 .typ = .statement_open,
             },
             .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
                 .literal = "if",
                 .typ = .if_open,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
             },
             .{
                 .literal = ".something",
                 .typ = .access,
             },
             .{
-                .literal = ">",
-                .typ = .greater_than,
-            },
-            .{
-                .literal = "34",
-                .typ = .literal,
+                .literal = " ",
+                .typ = .space,
             },
             .{
                 .literal = "zz||",
                 .typ = .statement_close,
+            },
+            .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
             },
             .{
                 .literal = "{|",
@@ -120,28 +134,48 @@ const ALL_CASES = &[_]LexerTestCase{
                 .typ = .expression_close,
             },
             .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
                 .literal = "||zz",
                 .typ = .statement_open,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
             },
             .{
                 .literal = "if",
                 .typ = .if_open,
             },
             .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
                 .literal = ".nested_thing",
                 .typ = .access,
             },
             .{
-                .literal = "==",
-                .typ = .equal_to,
-            },
-            .{
-                .literal = "0",
-                .typ = .literal,
+                .literal = " ",
+                .typ = .space,
             },
             .{
                 .literal = "zz||",
                 .typ = .statement_close,
+            },
+            .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
             },
             .{
                 .literal = "{|",
@@ -156,52 +190,124 @@ const ALL_CASES = &[_]LexerTestCase{
                 .typ = .expression_close,
             },
             .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
                 .literal = "||zz",
                 .typ = .statement_open,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
             },
             .{
                 .literal = "else",
                 .typ = .@"else",
             },
             .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
                 .literal = "zz||",
                 .typ = .statement_close,
             },
             .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
                 .literal = "||zz",
                 .typ = .statement_open,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
             },
             .{
                 .literal = "endif",
                 .typ = .if_close,
             },
             .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
                 .literal = "zz||",
                 .typ = .statement_close,
             },
             .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
                 .literal = "||zz",
                 .typ = .statement_open,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
             },
             .{
                 .literal = "else",
                 .typ = .@"else",
             },
             .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
                 .literal = "zz||",
                 .typ = .statement_close,
+            },
+            .{
+                .literal = "\n",
+                .typ = .newline,
+            },
+            .{
+                .literal = " ",
+                .typ = .space,
             },
             .{
                 .literal = "||zz",
                 .typ = .statement_open,
             },
             .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
                 .literal = "endif",
                 .typ = .if_close,
             },
             .{
+                .literal = " ",
+                .typ = .space,
+            },
+            .{
                 .literal = "zz||",
                 .typ = .statement_close,
+            },
+            .{
+                .literal = "\n",
+                .typ = .newline,
             },
         },
     },
@@ -612,4 +718,4 @@ const ALL_CASES = &[_]LexerTestCase{
             },
         },
     },
-};
+}

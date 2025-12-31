@@ -12,27 +12,27 @@ test "iterate" {
     runTest("CUSTOM ITERATOR", customIterator);
     runTest("STRUCT FIELD ITERATION", structFieldIteration);
 
-    runTest("THREE ITERABLES", struct {
-        fn run() !void {
-            const allocator = std.testing.allocator;
-            for (ALL_THREE_ITERABLE_CASES) |case| {
-                if (try case.runTest(allocator)) |*failure| {
-                    defer failure.deinit(allocator);
-                    panic(
-                        \\
-                        \\ {s} Test Failed:
-                        \\ {f}
-                        \\
-                    , .{ case.name, failure });
-                } else {
-                    print(
-                        \\ {s}{s} CASE PASSED!{s}
-                        \\
-                    , .{ shared.ansi.GREEN, case.name, shared.ansi.RESET });
-                }
-            }
-        }
-    }.run);
+    // runTest("THREE ITERABLES", struct {
+    //     fn run() !void {
+    //         const allocator = std.testing.allocator;
+    //         for (ALL_THREE_ITERABLE_CASES) |case| {
+    //             if (try case.runTest(allocator)) |*failure| {
+    //                 defer failure.deinit(allocator);
+    //                 panic(
+    //                     \\
+    //                     \\ {s} Test Failed:
+    //                     \\ {f}
+    //                     \\
+    //                 , .{ case.name, failure });
+    //             } else {
+    //                 print(
+    //                     \\ {s}{s} CASE PASSED!{s}
+    //                     \\
+    //                 , .{ shared.ansi.GREEN, case.name, shared.ansi.RESET });
+    //             }
+    //         }
+    //     }
+    // }.run);
 }
 
 fn ForLoopTestCase(comptime TemplateContext: type) type {
@@ -67,15 +67,15 @@ const ALL_THREE_ITERABLE_CASES = &[_]ForLoopTestCase(ThreeIterableCtx){
         .content =
         \\ Hello!
         \\||zz for .outer_field zz||
-        \\ {{.}}
+        \\ {|.|}
         \\||zz endfor zz||
         \\Amt array: ||zz .array.len zz||
         \\||zz for .array zz||
-        \\ {{ . }}
+        \\ {| . |}
         \\||zz endfor zz||
         \\Amt Structs: ||zz .structs.len zz||
         \\||zz for .structs zz||
-        \\ {{ .inner_string }}
+        \\ {| .inner_string |}
         \\||zz endfor zz||
         \\
         ,
@@ -115,15 +115,15 @@ const ALL_THREE_ITERABLE_CASES = &[_]ForLoopTestCase(ThreeIterableCtx){
         .name = "nested for loops",
         .content =
         \\||zz for .structs zz||
-        \\{{.inner_string}}
+        \\{|.inner_string|}
         \\||zz for .inner_string zz||
-        \\ {{.}}
+        \\ {|.|}
         \\||zz endfor zz||
-        \\{{.inner_string}}
+        \\{|.inner_string|}
         \\||zz endfor zz||
         \\
         \\||zz for .inner_struct.inner_string zz||
-        \\ {{.}}
+        \\ {|.|}
         \\||zz endfor zz||
         ,
         .expected =

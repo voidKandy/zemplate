@@ -48,7 +48,7 @@ const ALL_THREE_CONDITIONAL_CASES = &[_]ConditionalTestCase(ThreeConditionalCtx)
         .name = "three conditionals",
         .input =
         \\ ||zz if .str_payload zz||
-        \\PAYLOAD: {{.}}
+        \\PAYLOAD: {|.|}
         \\ ||zz else zz||
         \\NO PAYLOAD
         \\ ||zz endif zz||
@@ -62,7 +62,7 @@ const ALL_THREE_CONDITIONAL_CASES = &[_]ConditionalTestCase(ThreeConditionalCtx)
         \\ ||zz if .struct_payload zz||
         \\Struct payload exists
         \\ ||zz if .inner_str zz||
-        \\Inner String: {{.}}
+        \\Inner String: {|.|}
         \\ ||zz else zz||
         \\ there is no inner_str
         \\ ||zz endif zz||

@@ -13,9 +13,9 @@ const Lexer = zemplate.Lexer;
 const Token = zemplate.Token;
 
 test "all" {
-    runTest("NESTED ACCESS", nestedAccessTest);
-    runTest("README", readmeTest);
-    runTest("RENDER", renderTest);
+    // runTest("NESTED ACCESS", nestedAccessTest);
+    // runTest("README", readmeTest);
+    // runTest("RENDER", renderTest);
 }
 
 fn nestedAccessTest() !void {

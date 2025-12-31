@@ -25,14 +25,19 @@ pub inline fn eql(self: Self, other: Self) bool {
         @intFromEnum(self.typ) == @intFromEnum(other.typ));
 }
 
+pub const EOF = Self{
+    .literal = "",
+    .typ = .eof,
+};
+
 pub const Type = enum {
     space,
     tab,
     newline,
     literal,
     access,
-    marker_open,
-    marker_close,
+    statement_open,
+    statement_close,
     expression_open,
     expression_close,
     for_open,
@@ -40,7 +45,13 @@ pub const Type = enum {
     if_open,
     if_close,
     @"else",
+    greater_than,
+    less_than,
+    equal_to,
+    greater_than_or_equal,
+    less_than_or_equal,
     json,
+    eof,
 
     pub inline fn isWhitespace(self: @This()) bool {
         return switch (self) {
@@ -48,19 +59,35 @@ pub const Type = enum {
             else => false,
         };
     }
+    pub inline fn isComparison(self: @This()) bool {
+        return switch (self) {
+            .greater_than,
+            .less_than,
+            .equal_to,
+            .greater_than_or_equal,
+            .less_than_or_equal,
+            => true,
+            else => false,
+        };
+    }
 };
 
 pub const keyword_map = std.StaticStringMap(Type).initComptime(.{
-    .{ "||zz", .marker_open },
-    .{ "zz||", .marker_close },
-    .{ "{{", .expression_open },
-    .{ "}}", .expression_close },
+    .{ "||zz", .statement_open },
+    .{ "zz||", .statement_close },
+    .{ "{|", .expression_open },
+    .{ "|}", .expression_close },
     .{ "for", .for_open },
     .{ "endfor", .for_close },
     .{ "if", .if_open },
     .{ "else", .@"else" },
     .{ "endif", .if_close },
     .{ "json", .json },
+    .{ ">", .greater_than },
+    .{ "<", .less_than },
+    .{ "==", .equal_to },
+    .{ ">=", .greater_than_or_equal },
+    .{ "<=", .less_than_or_equal },
 });
 
 /// MUST be initialized

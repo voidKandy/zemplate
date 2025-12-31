@@ -29,7 +29,7 @@ const IterationScope = struct {
     closed: bool = false,
     current_access: ?SerializeOptions = null,
     /// Functions exactly like `prev_token` in the outermost `render` method
-    prev_token: Token.Type = .marker_close,
+    prev_token: Token.Type = .statement_close,
     json_opts: std.json.Stringify.Options,
 
     pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
@@ -82,7 +82,9 @@ const IterationScope = struct {
     pub fn visit(self: *@This(), val: anytype) Error!void {
         const visit_log = std.log.scoped(.visitor);
         var in_expression = false;
-        while (try self.lexer.nextToken()) |tok| {
+
+        var tok = self.lexer.nextToken();
+        while (tok.typ != .eof) : (tok = self.lexer.nextToken()) {
             visit_log.debug(
                 \\On token: {any}
             , .{tok.typ});
@@ -94,7 +96,7 @@ const IterationScope = struct {
                     try self.writer.writer.writeAll(slice);
                 },
                 .for_close => self.closed = true,
-                .marker_close => if (self.closed) return,
+                .statement_close => if (self.closed) return,
                 .expression_open => {
                     if (in_expression) {
                         visit_log.err(
@@ -209,10 +211,10 @@ const IterationScope = struct {
                             .expression_open,
                             .access,
                             .json,
-                            .marker_open,
+                            .statement_open,
                             .for_close,
                             => false,
-                            .marker_close => tok.typ == .space,
+                            .statement_close => tok.typ == .space,
                             else => true,
                         };
                     }) {
@@ -237,7 +239,7 @@ fn handleForOpen(
         \\ FOR LOOP OPENED
     , .{});
     const access = try lexer.expectNextNonWhitespace(.access);
-    _ = try lexer.expectNextNonWhitespace(.marker_close);
+    _ = try lexer.expectNextNonWhitespace(.statement_close);
     const sani_literal = access.literal[1..];
 
     log.debug("Attempting to grab iterate for '{s}'", .{sani_literal});
@@ -261,7 +263,7 @@ fn handleForOpen(
         try scope.iterated_field.visit(&scope, n);
         if (true_position == null) true_position = scope.lexer.pos;
         scope.lexer.pos = scope.start_pos;
-        scope.prev_token = .marker_close;
+        scope.prev_token = .statement_close;
     }
 
     log.debug(
@@ -283,7 +285,7 @@ fn handleIfOpen(
         \\ IF STATEMENT OPENED
     , .{});
     const access = try lexer.expectNextNonWhitespace(.access);
-    _ = try lexer.expectNextNonWhitespace(.marker_close);
+    _ = try lexer.expectNextNonWhitespace(.statement_close);
     const sani_literal = access.literal[1..];
 
     log.debug("Attempting to grab iterate for '{s}'", .{sani_literal});
@@ -307,7 +309,7 @@ fn handleIfOpen(
         try scope.iterated_field.visit(&scope, n);
         if (true_position == null) true_position = scope.lexer.pos;
         scope.lexer.pos = scope.start_pos;
-        scope.prev_token = .marker_close;
+        scope.prev_token = .statement_close;
     }
 
     log.debug(
@@ -340,7 +342,8 @@ pub fn Template(comptime Context: type) type {
             var prev_token: ?Token.Type = null;
             var current_access: ?SerializeOptions = null;
 
-            while (try lexer.nextToken()) |token| {
+            var token = lexer.nextToken();
+            while (token.typ != .eof) : (token = lexer.nextToken()) {
                 switch (token.typ) {
                     .literal => {
                         try out.writer.writeAll(token.literal);
@@ -366,7 +369,7 @@ pub fn Template(comptime Context: type) type {
                         current_access.?.json = &json_opts;
                         log.debug("current access token: {any}", .{current_access.?});
                     },
-                    .marker_close => {
+                    .statement_close => {
                         if (current_access) |opts|
                             util.writeField(self.context, &out.writer, opts) catch |e| {
                                 log.err(
@@ -380,10 +383,10 @@ pub fn Template(comptime Context: type) type {
                         if (should_append: {
                             const t = prev_token orelse break :should_append true;
                             break :should_append switch (t) {
-                                // whitespace within marker_open & marker_close should be ignored
+                                // whitespace within statement_open & statement_close should be ignored
                                 .access,
                                 .json,
-                                .marker_open,
+                                .statement_open,
                                 .for_open,
                                 .for_close,
                                 => false,
@@ -397,14 +400,14 @@ pub fn Template(comptime Context: type) type {
                     .for_open => {
                         const slice = try handleForOpen(Context, &self.context, &lexer, a, json_opts);
                         defer a.free(slice);
-                        prev_token = .marker_close;
+                        prev_token = .statement_close;
                         try out.writer.writeAll(slice);
                         continue;
                     },
                     .if_open => {
                         const slice = try handleIfOpen(Context, &self.context, &lexer, a, json_opts);
                         defer a.free(slice);
-                        prev_token = .marker_close;
+                        prev_token = .statement_close;
                         try out.writer.writeAll(slice);
                         continue;
                     },
