@@ -35,15 +35,14 @@ inline fn validateParentAndFieldName(comptime Parent: type, comptime field_name:
 
         return error.InvalidFieldName;
     };
-    return .{
-        .conditional_chld = UnwrapConditionalChild(FieldType) orelse {
-            return error.NotIterable;
-        },
+    return UnwrapConditionalChild(FieldType) orelse {
+        return error.NotConditional;
     };
 }
 
 pub fn StructFieldConditional(comptime Parent: type, comptime field_name: []const u8) type {
-    const conditional_child = validateParentAndFieldName(Parent, field_name) catch @compileError("Cannot make struct field iterator from " ++ @typeName(Parent));
+    const conditional_child = validateParentAndFieldName(Parent, field_name) catch |e|
+        @compileError("Cannot make struct field conditional from " ++ @typeName(Parent) ++ "\nError: " ++ @errorName(e));
 
     return struct {
         instance: conditional_child.type,
@@ -56,13 +55,13 @@ pub fn StructFieldConditional(comptime Parent: type, comptime field_name: []cons
             };
         }
 
-        pub fn get(self: *@This()) ?*const union(enum) {
-            bool: bool,
-            payload: conditional_child.type,
+        pub fn get(self: *@This()) ?union(enum) {
+            bool: *const bool,
+            payload: *const conditional_child.type,
         } {
-            if (conditional_child.is_payload) return .{ .payload = self.instance };
+            if (conditional_child.is_payload) return .{ .payload = &self.instance };
             // if more than bool and optionals are ever supported, this will need to change
-            return .{ .bool = self.instance };
+            return .{ .bool = &self.instance };
         }
     };
 }

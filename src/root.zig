@@ -2,6 +2,7 @@ const std = @import("std");
 const render = @import("render.zig");
 pub const Template = render.Template;
 pub const iterate = @import("iterate.zig");
+pub const conditional = @import("conditional.zig");
 pub const Lexer = @import("Lexer.zig");
 pub const util = @import("util.zig");
 pub const Token = @import("Token.zig");

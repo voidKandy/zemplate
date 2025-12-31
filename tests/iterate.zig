@@ -10,7 +10,7 @@ test "iterate" {
     std.testing.log_level = .warn;
 
     runTest("CUSTOM ITERATOR", customIterator);
-    runTest("STRUCT ITERATION", structIteration);
+    runTest("STRUCT FIELD ITERATION", structFieldIteration);
 
     runTest("THREE ITERABLES", struct {
         fn run() !void {
@@ -180,7 +180,7 @@ const VisitorCtx = struct {
     }
 };
 
-fn structIteration() !void {
+fn structFieldIteration() !void {
     const OtherStruct = struct {
         other_string: []const u8,
     };

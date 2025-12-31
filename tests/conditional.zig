@@ -9,27 +9,29 @@ const Failure = shared.Failure;
 test "conditional" {
     std.testing.log_level = .warn;
 
-    runTest("THREE CONDITIONALS", struct {
-        fn run() !void {
-            const allocator = std.testing.allocator;
-            for (ALL_THREE_CONDITIONAL_CASES) |case| {
-                if (try case.runTest(allocator)) |*failure| {
-                    defer failure.deinit(allocator);
-                    panic(
-                        \\
-                        \\ {s} Test Failed:
-                        \\ {f}
-                        \\
-                    , .{ case.name, failure });
-                } else {
-                    print(
-                        \\ {s}{s} CASE PASSED!{s}
-                        \\
-                    , .{ shared.ansi.GREEN, case.name, shared.ansi.RESET });
-                }
-            }
-        }
-    }.run);
+    runTest("STRUCT FIELD CONDITIONAL", structFieldConditional);
+
+    // runTest("THREE CONDITIONALS", struct {
+    //     fn run() !void {
+    //         const allocator = std.testing.allocator;
+    //         for (ALL_THREE_CONDITIONAL_CASES) |case| {
+    //             if (try case.runTest(allocator)) |*failure| {
+    //                 defer failure.deinit(allocator);
+    //                 panic(
+    //                     \\
+    //                     \\ {s} Test Failed:
+    //                     \\ {f}
+    //                     \\
+    //                 , .{ case.name, failure });
+    //             } else {
+    //                 print(
+    //                     \\ {s}{s} CASE PASSED!{s}
+    //                     \\
+    //                 , .{ shared.ansi.GREEN, case.name, shared.ansi.RESET });
+    //             }
+    //         }
+    //     }
+    // }.run);
 }
 
 const ThreeConditionalCtx = struct {
@@ -122,4 +124,49 @@ fn ConditionalTestCase(comptime TemplateContext: type) type {
             return null;
         }
     };
+}
+
+fn structFieldConditional() !void {
+    var t = ThreeConditionalCtx{
+        .boolean = true,
+        .str_payload = "string",
+        .struct_payload = .{ .boolean = false },
+    };
+
+    {
+        const Cond = zemplate.conditional.StructFieldConditional(ThreeConditionalCtx, "boolean");
+        var conditional = Cond.fromParentPtr(&t);
+
+        switch (conditional.get().?) {
+            .bool => |b| {
+                if (!b.*) return error.Unexpected;
+            },
+            else => return error.Unexpected,
+        }
+    }
+    {
+        const Cond = zemplate.conditional.StructFieldConditional(ThreeConditionalCtx, "str_payload");
+        var conditional = Cond.fromParentPtr(&t);
+
+        switch (conditional.get().?) {
+            .payload => |p| {
+                if (!std.mem.eql(u8, p.*.?, "string")) {
+                    return error.Unexpected;
+                }
+            },
+            else => return error.Unexpected,
+        }
+    }
+    {
+        const Cond = zemplate.conditional.StructFieldConditional(ThreeConditionalCtx, "struct_payload");
+        var conditional = Cond.fromParentPtr(&t);
+
+        switch (conditional.get().?) {
+            .payload => |p| {
+                if (p.*.?.inner_str != null or p.*.?.boolean != false)
+                    return error.Unexpected;
+            },
+            else => return error.Unexpected,
+        }
+    }
 }
