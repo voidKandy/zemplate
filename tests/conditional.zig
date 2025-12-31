@@ -130,7 +130,7 @@ fn structFieldConditional() !void {
     var t = ThreeConditionalCtx{
         .boolean = true,
         .str_payload = "string",
-        .struct_payload = .{ .boolean = false },
+        .struct_payload = .{ .inner_str = "inner string", .boolean = false },
     };
 
     {
@@ -163,7 +163,7 @@ fn structFieldConditional() !void {
 
         switch (conditional.get().?) {
             .payload => |p| {
-                if (p.*.?.inner_str != null or p.*.?.boolean != false)
+                if (!std.mem.eql(u8, p.*.?.inner_str.?, "inner string") or p.*.?.boolean != false)
                     return error.Unexpected;
             },
             else => return error.Unexpected,
