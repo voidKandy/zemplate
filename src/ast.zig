@@ -209,6 +209,14 @@ pub const ExpressionStatement = union(enum) {
         }
     }
 
+    pub fn destroy(self: @This(), a: Allocator) void {
+        switch (self) {
+            .access => |val| a.destroy(val),
+            .comparison => |val| a.destroy(val),
+            .literal => |val| a.destroy(val),
+        }
+    }
+
     pub fn create(a: Allocator, expr: union(enum) {
         access: AccessExpression,
         comparison: ComparisonExpression,

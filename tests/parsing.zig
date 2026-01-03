@@ -55,9 +55,10 @@ const ParserTestCase = struct {
 };
 
 fn parserTest() !void {
-    for (try initCases(std.testing.allocator)) |case| {
-        defer case.deinit();
-        if (try case.runTest(std.testing.allocator)) |failure| {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    for (try initCases(arena.allocator())) |case| {
+        if (try case.runTest(arena.allocator())) |failure| {
             std.log.err(
                 \\
                 \\ {s} Test Failed:
