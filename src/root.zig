@@ -1,6 +1,6 @@
 const std = @import("std");
 const render = @import("render.zig");
-const ast = @import("ast.zig");
+pub const ast = @import("ast.zig");
 pub const Template = render.Template;
 pub const iterate = @import("iterate.zig");
 pub const conditional = @import("conditional.zig");

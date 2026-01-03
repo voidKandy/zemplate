@@ -2,6 +2,7 @@ comptime {
     _ = @import("iterate.zig");
     _ = @import("conditional.zig");
     _ = @import("lexing.zig");
+    _ = @import("parsing.zig");
 }
 
 const std = @import("std");

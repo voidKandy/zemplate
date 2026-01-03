@@ -53,6 +53,9 @@ pub const Type = enum {
     json,
     eof,
 
+    pub fn eql(self: @This(), other: @This()) bool {
+        return @intFromEnum(self) == @intFromEnum(other);
+    }
     pub inline fn isWhitespace(self: @This()) bool {
         return switch (self) {
             .space, .newline, .tab => true,

@@ -15,9 +15,9 @@ const allocPrint = std.fmt.allocPrint;
 
 arena: std.heap.ArenaAllocator,
 writer: std.Io.Writer.Allocating,
-errors: ArrayList(u8),
+errors: ArrayList([]u8),
 
-lexer: Lexer,
+lexer: *Lexer,
 
 json_options: std.json.Stringify.Options,
 
@@ -30,32 +30,38 @@ const Self = @This();
 pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try writer.print(
         \\ --- PARSER --- 
-        \\ current token: {any}
-        \\ previous token: {any}
         \\ arena usage: {d}
-        \\ errors:
-        \\ {s}
+        \\ Lexer position: {d}
+        \\ current token: {f}
+        \\ peek token: {f}
     , .{
         self.arena.queryCapacity(),
+        self.lexer.pos,
         self.current_token,
-        self.prev_token,
-        self.errors.items,
+        self.peek_token,
     });
+
+    if (self.prev_token) |t| {
+        try writer.print(
+            \\
+            \\ previous token: {f}
+        , .{t});
+    }
 }
 
 pub fn init(
     a: Allocator,
-    lexer: Lexer,
+    lexer: *Lexer,
     json_opts: ?std.json.Stringify.Options,
 ) Allocator.Error!Self {
     // maybe rmove?
     if (lexer.pos != 0)
         @panic("Parser initialized with Lexer with .pos != 0");
-    const arena = std.heap.ArenaAllocator.init(a);
+    var arena = std.heap.ArenaAllocator.init(a);
     const writer: std.Io.Writer.Allocating = .init(a);
 
-    const current_token = lexer.nextToken();
-    const peek_token = lexer.nextToken();
+    const current_token = lexer.nextTokenSkipWhitespace();
+    const peek_token = lexer.nextTokenSkipWhitespace();
 
     return Self{
         .arena = arena,
@@ -75,35 +81,46 @@ pub fn deinit(self: *Self) void {
     self.lexer.deinit();
 }
 
-pub fn parseProgram(self: *Self) ast.Program {
-    var program = &ast.Program{};
+pub fn parseProgram(self: *Self) Allocator.Error!ast.Program {
+    var program = ast.Program{};
 
-    while (!self.current_token.typ != .eof) {
-        const stmt = self.parseStatement();
-        if (stmt != null) {
-            program.statements.append(self.arena.allocator(), stmt);
+    while (!self.current_token.typ.eql(.eof)) {
+        const stmt = try self.parseStatement();
+
+        if (self.errors.items.len > 0) {
+            for (self.errors.items) |e| {
+                log.err(
+                    \\ Parser State: {f}
+                    \\ Parser Error: {s}
+                , .{ self, e });
+            }
+            return program;
         }
+        if (stmt) |s|
+            try program.statements.append(self.arena.allocator(), s);
+
         self.progressToken();
     }
+
     return program;
 }
 
-fn parseStatement(self: *Self) ?ast.Statement {
+fn parseStatement(self: *Self) Allocator.Error!?ast.Statement {
     switch (self.current_token.typ) {
         .statement_open => switch (self.peek_token.typ) {
             .for_open => return .{ .variant = .{
-                .@"for" = self.parseForStatement(),
+                .@"for" = try self.parseForStatement() orelse return null,
             } },
             .if_open => return .{ .variant = .{
-                .@"if" = self.parseIfStatement(),
+                .@"if" = try self.parseIfStatement() orelse return null,
             } },
             .@"else" => return .{ .variant = .{
-                .@"else" = self.parseElseStatement(),
+                .@"else" = try self.parseElseStatement() orelse return null,
             } },
             else => {},
         },
         .expression_open => return .{ .variant = .{
-            .expression = self.parseExpressionStatement(.expression_close),
+            .expression = try self.parseExpressionStatement() orelse return null,
         } },
         else => {},
     }
@@ -111,91 +128,113 @@ fn parseStatement(self: *Self) ?ast.Statement {
     self.emitError(
         \\ Could not parse statement that begins with token: {f}
     , .{self.current_token}) catch @panic("OOM");
+    return null;
 }
 
-fn parseAccessExpression(self: *Self, expected_close_token: Token.Type) ast.AccessExpression {
-    if (expected_close_token != .statement_close and expected_close_token != .expression_close)
-        @panic("Passed an invalid expected close token to parseAccessExpression");
-    _ = self.expectPeekAndProgress(.access);
+fn parseAccessExpression(self: *Self) Allocator.Error!?ast.AccessExpression {
+    if (!self.expectPeekAndProgress(.access)) {
+        try self.emitError("Expected to encounter an access expression", .{});
+        return null;
+    }
     var access = ast.AccessExpression{
         .literal = self.current_token.literal,
     };
-    while (self.peek_token.typ != expected_close_token) {
-        switch (self.peek_token.typ) {
-            .json => {
-                access.json = true;
-                self.progressToken();
-            },
-            else => {
-                self.emitError(
-                    \\ Did not expect to encounter {any} between .access token and .expression_close
-                , .{self.peek_token.typ}) catch @panic("OOM");
-            },
-        }
+
+    // when more serialization options are added, this will need to account for those
+    switch (self.peek_token.typ) {
+        .json => {
+            access.json = true;
+            self.progressToken();
+        },
+        else => {},
     }
-    _ = self.expectPeekAndProgress(expected_close_token);
     return access;
 }
 
-fn parseForStatement(self: *Self) ast.ForStatement {
-    _ = self.expectPeekAndProgress(.for_open);
+fn parseElseStatement(self: *Self) Allocator.Error!?ast.ElseStatement {
+    if (!self.expectPeekAndProgress(.@"else")) return null;
+    if (!self.expectPeekAndProgress(.statement_close)) return null;
+
+    var body = ArrayList(ast.Statement).empty;
+    while (self.peek_token.typ != .statement_open) {
+        const statement = try self.parseStatement() orelse {
+            self.emitError(
+                \\ Expected statement in for block
+            , .{}) catch @panic("OOM");
+            return null;
+        };
+
+        try body.append(self.arena.allocator(), statement);
+    }
+
+    return .{
+        .body = try body.toOwnedSlice(self.arena.allocator()),
+    };
+}
+
+fn parseForStatement(self: *Self) Allocator.Error!?ast.ForStatement {
+    if (!self.expectPeekAndProgress(.for_open)) return null;
     // for statements can ONLY have access expressions, not comparison
-    const access = self.parseAccessExpression(.statement_close);
+    const access = try self.parseAccessExpression() orelse return null;
+    if (!self.expectPeekAndProgress(.statement_close)) return null;
 
     var body = ArrayList(ast.Statement).empty;
     var alternative: ?ast.ElseStatement = null;
     while (self.peek_token.typ != .for_close) {
-        const statement = self.parseStatement() orelse {
+        const statement = try self.parseStatement() orelse {
             self.emitError(
                 \\ Expected statement in for block
             , .{}) catch @panic("OOM");
-            break;
+            return null;
         };
 
         if (statement.variant == .@"else")
-            alternative = statement
+            alternative = statement.variant.@"else"
         else
-            body.append(self.arena.allocator(), statement);
+            try body.append(self.arena.allocator(), statement);
     }
 
-    _ = self.expectPeekAndProgress(.for_close);
-    _ = self.expectPeekAndProgress(.statement_close);
+    if (!self.expectPeekAndProgress(.for_close)) return null;
+    if (!self.expectPeekAndProgress(.statement_close)) return null;
 
     return .{
         .access = access,
         .alternative = alternative,
-        .body = body.toOwnedSlice(self.arena.allocator()),
+        .body = try body.toOwnedSlice(self.arena.allocator()),
     };
 }
 
-fn parseIfStatement(self: *Self) ast.IfStatement {
-    _ = self.expectPeekAndProgress(.if_open);
-    const condition = self.parseExpressionStatement(.statement_close);
+fn parseIfStatement(self: *Self) Allocator.Error!?ast.IfStatement {
+    if (!self.expectPeekAndProgress(.if_open)) return null;
+
+    const condition = try self.parseExpressionStatement() orelse {
+        try self.emitError("Expected to encounter a condition statement in if statement", .{});
+        return null;
+    };
 
     var body = ArrayList(ast.Statement).empty;
     var alternative: ?ast.ElseStatement = null;
-
     while (self.peek_token.typ != .if_close) {
-        const statement = self.parseStatement() orelse {
-            self.emitError(
+        const statement = try self.parseStatement() orelse {
+            try self.emitError(
                 \\ Expected statement in for block
-            , .{}) catch @panic("OOM");
-            break;
+            , .{});
+            return null;
         };
 
         if (statement.variant == .@"else")
-            alternative = statement
+            alternative = statement.variant.@"else"
         else
-            body.append(self.arena.allocator(), statement);
+            try body.append(self.arena.allocator(), statement);
     }
 
-    _ = self.expectPeekAndProgress(.if_close);
-    _ = self.expectPeekAndProgress(.statement_close);
+    if (!self.expectPeekAndProgress(.if_close)) return null;
+    if (!self.expectPeekAndProgress(.statement_close)) return null;
 
     return .{
         .condition = condition,
         .alternative = alternative,
-        .body = body.toOwnedSlice(self.arena.allocator()),
+        .body = try body.toOwnedSlice(self.arena.allocator()),
     };
 }
 
@@ -203,26 +242,78 @@ fn parseIfStatement(self: *Self) ast.IfStatement {
 /// something following `statement_open` (for or if open) & `statement_close`
 /// or
 /// `expression_open` & `expression_close`
-fn parseExpressionStatement(self: *Self, expected_close_token: Token.Type) ast.ExpressionStatement {
-    if (!self.expectPrevious(.for_open) and !self.expectPrevious(.if_open) and !self.expectPrevious(.expression_open))
-        self.emitError(
-            \\ trying to parse expression statement with unexpected previous: '{s}'
-        , .{if (self.prev_token) |t| @tagName(t) orelse "null"});
+fn parseExpressionStatement(self: *Self) Allocator.Error!?ast.ExpressionStatement {
+    const left = blk: {
+        switch (self.peek_token.typ) {
+            .literal => {
+                const literal_expr =
+                    ast.LiteralExpression.tryFromStringLiteral(self.peek_token.literal) orelse {
+                        try self.emitError(
+                            \\ Failed to parse literal expression from string literal: '{s}'
+                        , .{self.peek_token.literal});
+                        return null;
+                    };
+
+                const left =
+                    try ast.ExpressionStatement.create(self.arena.allocator(), .{ .literal = literal_expr });
+
+                std.debug.assert(self.expectPeekAndProgress(.literal));
+                break :blk left;
+            },
+            .access => {
+                const left = try ast.ExpressionStatement.create(
+                    self.arena.allocator(),
+                    .{ .access = try self.parseAccessExpression() orelse return null },
+                );
+                break :blk left;
+            },
+            else => {
+                try self.emitError(
+                    \\ Cannot parse expression statement starting with token: {any}
+                , .{self.peek_token.typ});
+
+                return null;
+            },
+        }
+    };
+
+    const return_value = blk: {
+        if (self.peek_token.typ.isComparison()) {
+            const operator = ast.ComparisonExpression.Operator.tryFromTokenType(self.peek_token.typ).?;
+            self.progressToken();
+            const right = try self.parseExpressionStatement() orelse return null;
+            break :blk try ast.ExpressionStatement.create(self.arena.allocator(), .{ .comparison = .{
+                .operator = operator,
+                .left = left,
+                .right = right,
+            } });
+        }
+
+        break :blk left;
+    };
 
     switch (self.peek_token.typ) {
-        .literal => {
-            // const literal = self.peek_token.literal;
-            _ = self.expectPeekAndProgress(.literal);
+        .expression_close, .statement_close => |t| {
+            _ = self.expectPeekAndProgress(t);
         },
-        .access => return .{ .access = self.parseAccessExpression(expected_close_token) },
-        else => {},
+        else => |t| {
+            try self.emitError(
+                \\ Expected Expression statement to end with .expression_close or .statement_close
+                \\ Got: {any}
+            , .{t});
+        },
     }
+
+    self.progressToken();
+
+    return return_value;
 }
 
+/// Progresses token, skipping whitespace and updating prev/current/peek
 fn progressToken(self: *Self) void {
     self.prev_token = self.current_token;
     self.current_token = self.peek_token;
-    self.peek_token = self.lexer.nextToken();
+    self.peek_token = self.lexer.nextTokenSkipWhitespace();
 }
 
 fn expectPrevious(self: Self, expected_prev: Token.Type) bool {
@@ -238,7 +329,7 @@ fn expectPeekAndProgress(self: *Self, expected_next: Token.Type) bool {
     }
 
     self.emitError(
-        \\ Expected next token to be {any}, got {any} instead
+        \\ Expected next token to be {any}, got {f} instead
     , .{ expected_next, self.peek_token }) catch @panic("OOM");
     return false;
 }
@@ -246,6 +337,6 @@ fn expectPeekAndProgress(self: *Self, expected_next: Token.Type) bool {
 fn emitError(self: *Self, comptime fmt: []const u8, args: anytype) Allocator.Error!void {
     try self.errors.append(
         self.arena.allocator(),
-        try allocPrint(fmt, args),
+        try allocPrint(self.arena.allocator(), fmt, args),
     );
 }

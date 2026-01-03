@@ -7,7 +7,7 @@ const Lexer = zemplate.Lexer;
 const Token = zemplate.Token;
 
 test "lexing" {
-    std.testing.log_level = .debug;
+    std.testing.log_level = .warn;
     runTest("LEXING", lexerTest);
 }
 

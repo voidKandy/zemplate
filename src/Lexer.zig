@@ -121,10 +121,8 @@ fn readWord(self: *Self) usize {
 /// if any whitespace tokens are encountered they are skipped
 /// returns SyntaxInvalid if next token doesn't match expected
 pub fn expectNextNonWhitespace(self: *Self, typ: Token.Type) Error!Token {
-    var t = self.nextToken();
-    while (t.typ != .eof) : (t = self.nextToken()) {
-        if (t.typ.isWhitespace())
-            continue;
+    var t = self.nextTokenSkipWhitespace();
+    while (t.typ != .eof) : (t = self.nextTokenSkipWhitespace()) {
         if (t.typ != typ) {
             log.err(
                 \\ Expected {any} token
@@ -135,6 +133,14 @@ pub fn expectNextNonWhitespace(self: *Self, typ: Token.Type) Error!Token {
         return t;
     }
     return error.NoToken;
+}
+
+pub fn nextTokenSkipWhitespace(self: *Self) Token {
+    var token = self.nextToken();
+    while (token.typ.isWhitespace()) {
+        token = self.nextToken();
+    }
+    return token;
 }
 
 pub fn nextToken(self: *Self) Token {
