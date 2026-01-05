@@ -20,49 +20,27 @@ pub const Statement = struct {
                     \\ {f}
                 , .{s.condition});
 
-                if (s.body.len > 0) {
+                if (s.block.body.len > 0) {
                     try writer.writeAll("If Body: \n");
-                    for (s.body) |st| {
-                        try writer.print(
-                            \\ {f}
-                            \\ 
-                        , .{st});
-                    }
+                    try s.block.format(writer);
                     try writer.writeAll("EndBody\n");
                 }
-                if (s.alternative) |alt| {
-                    try writer.print("{f}\n", .{alt});
-                }
+                if (s.alternative) |alt| try alt.format(writer);
             },
             .@"for" => |s| {
                 try writer.print(
                     \\Access: {f}
                 , .{s.access});
 
-                if (s.body.len > 0) {
+                if (s.block.body.len > 0) {
                     try writer.writeAll("For Body: \n");
-                    for (s.body) |st| {
-                        try writer.print(
-                            \\ {f}
-                            \\ 
-                        , .{st});
-                    }
+                    try s.block.format(writer);
                     try writer.writeAll("EndBody\n");
                 }
-                if (s.alternative) |alt| {
-                    try writer.print("{f}\n", .{alt});
-                }
+                if (s.alternative) |alt| try alt.format(writer);
             },
-            .@"else" => |s| {
-                try writer.print(
-                    \\{f}
-                , .{s});
-            },
-            .expression => |s| {
-                try writer.print(
-                    \\{f}
-                , .{s});
-            },
+            .block => |s| try s.format(writer),
+            .expression => |s| try s.format(writer),
         }
     }
 
@@ -73,46 +51,32 @@ pub const Statement = struct {
                 const this = self.variant.@"if";
                 const oth = other.variant.@"if";
 
-                if (!this.condition.eql(oth.condition) or this.body.len != oth.body.len) return false;
-                for (this.body, oth.body) |th, ot| {
-                    if (!th.eql(ot)) return false;
-                }
+                if (!this.condition.eql(oth.condition) or
+                    !this.block.eql(oth.block)) return false;
+
                 if (this.alternative) |th_alt| {
                     if (oth.alternative == null) return false;
-                    if (oth.alternative.?.body.len != th_alt.body.len) return false;
-
-                    for (th_alt.body, oth.alternative.?.body) |th, ot| {
-                        if (!th.eql(ot)) return false;
-                    }
+                    if (!oth.alternative.?.eql(th_alt)) return false;
                 } else if (oth.alternative) |_| return false;
             },
             .@"for" => {
                 if (other.variant != .@"for") return false;
                 const this = self.variant.@"for";
                 const oth = other.variant.@"for";
-                if (!this.access.eql(oth.access) or this.body.len != oth.body.len) return false;
 
-                for (this.body, oth.body) |th, ot| {
-                    if (!th.eql(ot)) return false;
-                }
+                if (!this.access.eql(oth.access) or
+                    !this.block.eql(oth.block)) return false;
+
                 if (this.alternative) |th_alt| {
                     if (oth.alternative == null) return false;
-                    if (oth.alternative.?.body.len != th_alt.body.len) return false;
-
-                    for (th_alt.body, oth.alternative.?.body) |th, ot| {
-                        if (!th.eql(ot)) return false;
-                    }
+                    if (!oth.alternative.?.eql(th_alt)) return false;
                 } else if (oth.alternative) |_| return false;
             },
-            .@"else" => {
-                if (other.variant != .@"else") return false;
-                const this = self.variant.@"else";
-                const oth = other.variant.@"else";
-                if (this.body.len != oth.body.len) return false;
-
-                for (this.body, oth.body) |th, ot| {
-                    if (!th.eql(ot)) return false;
-                }
+            .block => {
+                if (other.variant != .block) return false;
+                const this = self.variant.block;
+                const oth = other.variant.block;
+                return this.eql(oth);
             },
             .expression => {
                 if (other.variant != .expression) return false;
@@ -126,40 +90,45 @@ pub const Statement = struct {
 };
 
 pub const StatementVariant = union(enum) {
+    block: BlockStatement,
     @"for": ForStatement,
     @"if": IfStatement,
-    @"else": ElseStatement,
     expression: ExpressionStatement,
 };
 
 pub const ForStatement = struct {
     access: AccessExpression,
-    body: []Statement,
-    alternative: ?ElseStatement,
+    block: BlockStatement,
+    alternative: ?BlockStatement,
 };
 
-pub const ElseStatement = struct {
+pub const BlockStatement = struct {
     body: []Statement,
+
+    pub fn eql(self: @This(), other: @This()) bool {
+        for (self.body, other.body) |th, ot| {
+            if (!th.eql(ot)) return false;
+        }
+        return true;
+    }
 
     pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (self.body.len > 0) {
-            try writer.writeAll("Else Body: \n");
+            try writer.writeAll("{\n");
             for (self.body) |st| {
-                try writer.print(
-                    \\ {f}
-                    \\ 
-                , .{st});
+                try st.format(writer);
             }
+            try writer.writeAll("}\n");
         } else {
-            try writer.writeAll("Else Body Empty\n");
+            try writer.writeAll("Block Empty\n");
         }
     }
 };
 
 pub const IfStatement = struct {
     condition: ExpressionStatement,
-    body: []Statement,
-    alternative: ?ElseStatement,
+    block: BlockStatement,
+    alternative: ?BlockStatement,
 };
 
 pub const ExpressionStatement = union(enum) {

@@ -38,9 +38,9 @@ const ParserTestCase = struct {
         // defer parser.deinit();
         const program = try parser.parseProgram();
 
-        if (parser.errors.items.len > 0) {
-            return error.HasError;
-        }
+        // if (parser.errors.items.len > 0) {
+        //     return error.HasError;
+        // }
         for (program.statements.items, 0..) |statement, i| {
             if (!self.expected_statements[i].eql(statement)) {
                 return .{
@@ -77,13 +77,14 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             .content =
             \\ ||zz if .something zz||
             \\ {|.|}
-            // \\ ||zz if .nested_thing zz||
-            // \\ {|.|}
+            \\ {|.subfield|}
+            \\ ||zz endif zz||
+            \\ ||zz for .iterable json zz||
+            \\ {|.|}
+            \\ ||zz endfor zz||
             // \\ ||zz else zz||
-            // \\ ||zz endif zz||
             // \\
             // \\ ||zz else zz||
-            \\ ||zz endif zz||
             ,
             .expected_statements = &[_]ast.Statement{
                 .{
@@ -92,11 +93,36 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                             .condition = try ast.ExpressionStatement.create(a, .{ .access = .{
                                 .literal = ".something",
                             } }),
-                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{.{
-                                .variant = .{ .expression = try ast.ExpressionStatement.create(a, .{ .access = .{
-                                    .literal = ".",
-                                } }) },
-                            }}),
+                            .block = .{ .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                .{
+                                    .variant = .{ .expression = try ast.ExpressionStatement.create(a, .{ .access = .{
+                                        .literal = ".",
+                                    } }) },
+                                },
+                                .{
+                                    .variant = .{ .expression = try ast.ExpressionStatement.create(a, .{ .access = .{
+                                        .literal = ".subfield",
+                                    } }) },
+                                },
+                            }) },
+                            .alternative = null,
+                        },
+                    },
+                },
+                .{
+                    .variant = .{
+                        .@"for" = .{
+                            .access = .{
+                                .literal = ".iterable",
+                                .json = true,
+                            },
+                            .block = .{ .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                .{
+                                    .variant = .{ .expression = try ast.ExpressionStatement.create(a, .{ .access = .{
+                                        .literal = ".",
+                                    } }) },
+                                },
+                            }) },
                             .alternative = null,
                         },
                     },

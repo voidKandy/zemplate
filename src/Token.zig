@@ -13,10 +13,7 @@ pub fn create(str: []const u8, typ: Type) Self {
 
 pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     return try writer.print(
-        \\
-        \\ --- .{s} ---
-        \\ Literal: [{s}]
-        \\
+        \\[.{s}: '{s}']
     , .{ @tagName(self.typ), self.literal });
 }
 
