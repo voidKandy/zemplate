@@ -110,45 +110,37 @@ fn parseStatement(self: *Self) Allocator.Error!?ast.Statement {
     // _ = if (self.current_token.typ == .statement_open) self.progressToken();
     //     self.current_token.typ == .statement_close) self.progressToken();
     switch (self.current_token.typ) {
-        .for_open => return .{ .variant = .{
-            .@"for" = try self.parseForStatement() orelse {
-                try self.emitError(
-                    \\ Failed to parse for statement
-                    \\ Parser state:
-                    \\ {f}
-                , .{self});
-                return null;
-            },
+        .for_open => return .{ .@"for" = try self.parseForStatement() orelse {
+            try self.emitError(
+                \\ Failed to parse for statement
+                \\ Parser state:
+                \\ {f}
+            , .{self});
+            return null;
         } },
-        .if_open => return .{ .variant = .{
-            .@"if" = try self.parseIfStatement() orelse {
-                try self.emitError(
-                    \\ Failed to parse if statement
-                    \\ Parser state:
-                    \\ {f}
-                , .{self});
-                return null;
-            },
+        .if_open => return .{ .@"if" = try self.parseIfStatement() orelse {
+            try self.emitError(
+                \\ Failed to parse if statement
+                \\ Parser state:
+                \\ {f}
+            , .{self});
+            return null;
         } },
-        .@"else" => return .{ .variant = .{
-            .block = try self.parseBlockStatement() orelse {
-                try self.emitError(
-                    \\ Failed to parse block statement
-                    \\ Parser state:
-                    \\ {f}
-                , .{self});
-                return null;
-            },
+        .@"else" => return .{ .block = try self.parseBlockStatement() orelse {
+            try self.emitError(
+                \\ Failed to parse block statement
+                \\ Parser state:
+                \\ {f}
+            , .{self});
+            return null;
         } },
-        .expression_open => return .{ .variant = .{
-            .expression = try self.parseExpressionStatement() orelse {
-                try self.emitError(
-                    \\ Failed to parse expression statement
-                    \\ Parser state:
-                    \\ {f}
-                , .{self});
-                return null;
-            },
+        .expression_open => return .{ .expression = try self.parseExpressionStatement() orelse {
+            try self.emitError(
+                \\ Failed to parse expression statement
+                \\ Parser state:
+                \\ {f}
+            , .{self});
+            return null;
         } },
         else => {},
     }
@@ -235,8 +227,8 @@ fn parseForStatement(self: *Self) Allocator.Error!?ast.ForStatement {
         };
 
         // this may be wrong
-        if (statement.variant == .block)
-            alternative = statement.variant.block
+        if (statement == .block)
+            alternative = statement.block
         else
             try body.append(self.arena.allocator(), statement);
     }
@@ -278,8 +270,8 @@ fn parseIfStatement(self: *Self) Allocator.Error!?ast.IfStatement {
         };
 
         // this may be wrong
-        if (statement.variant == .block)
-            alternative = statement.variant.block
+        if (statement == .block)
+            alternative = statement.block
         else
             try body.append(self.arena.allocator(), statement);
     }

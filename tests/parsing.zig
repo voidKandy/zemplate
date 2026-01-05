@@ -38,9 +38,9 @@ const ParserTestCase = struct {
         // defer parser.deinit();
         const program = try parser.parseProgram();
 
-        // if (parser.errors.items.len > 0) {
-        //     return error.HasError;
-        // }
+        if (parser.errors.items.len > 0) {
+            return error.HasError;
+        }
         for (program.statements.items, 0..) |statement, i| {
             if (!self.expected_statements[i].eql(statement)) {
                 return .{
@@ -82,49 +82,36 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             \\ ||zz for .iterable json zz||
             \\ {|.|}
             \\ ||zz endfor zz||
-            // \\ ||zz else zz||
-            // \\
-            // \\ ||zz else zz||
             ,
             .expected_statements = &[_]ast.Statement{
                 .{
-                    .variant = .{
-                        .@"if" = .{
-                            .condition = try ast.ExpressionStatement.create(a, .{ .access = .{
-                                .literal = ".something",
-                            } }),
-                            .block = .{ .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                                .{
-                                    .variant = .{ .expression = try ast.ExpressionStatement.create(a, .{ .access = .{
-                                        .literal = ".",
-                                    } }) },
-                                },
-                                .{
-                                    .variant = .{ .expression = try ast.ExpressionStatement.create(a, .{ .access = .{
-                                        .literal = ".subfield",
-                                    } }) },
-                                },
-                            }) },
-                            .alternative = null,
-                        },
+                    .@"if" = .{
+                        .condition = try ast.ExpressionStatement.create(a, .{ .access = .{
+                            .literal = try a.dupe(u8, ".something"),
+                        } }),
+                        .block = .{ .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                            .{ .expression = try ast.ExpressionStatement.create(a, .{ .access = .{
+                                .literal = try a.dupe(u8, "."),
+                            } }) },
+                            .{ .expression = try ast.ExpressionStatement.create(a, .{ .access = .{
+                                .literal = try a.dupe(u8, ".subfield"),
+                            } }) },
+                        }) },
+                        .alternative = null,
                     },
                 },
                 .{
-                    .variant = .{
-                        .@"for" = .{
-                            .access = .{
-                                .literal = ".iterable",
-                                .json = true,
-                            },
-                            .block = .{ .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                                .{
-                                    .variant = .{ .expression = try ast.ExpressionStatement.create(a, .{ .access = .{
-                                        .literal = ".",
-                                    } }) },
-                                },
-                            }) },
-                            .alternative = null,
+                    .@"for" = .{
+                        .access = .{
+                            .literal = try a.dupe(u8, ".iterable"),
+                            .json = true,
                         },
+                        .block = .{ .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                            .{ .expression = try ast.ExpressionStatement.create(a, .{ .access = .{
+                                .literal = try a.dupe(u8, "."),
+                            } }) },
+                        }) },
+                        .alternative = null,
                     },
                 },
             },

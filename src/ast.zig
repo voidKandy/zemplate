@@ -8,12 +8,15 @@ pub const Program = struct {
     statements: std.ArrayList(Statement) = .empty,
 };
 
-pub const Statement = struct {
-    variant: StatementVariant,
+pub const Statement = union(enum) {
+    block: BlockStatement,
+    @"for": ForStatement,
+    @"if": IfStatement,
+    expression: ExpressionStatement,
 
     pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        try writer.print("{s} statement:\n", .{@tagName(self.variant)});
-        switch (self.variant) {
+        try writer.print("{s} statement:\n", .{@tagName(self)});
+        switch (self) {
             .@"if" => |s| {
                 try writer.print(
                     \\Condition:
@@ -45,11 +48,11 @@ pub const Statement = struct {
     }
 
     pub fn eql(self: @This(), other: @This()) bool {
-        switch (self.variant) {
+        switch (self) {
             .@"if" => {
-                if (other.variant != .@"if") return false;
-                const this = self.variant.@"if";
-                const oth = other.variant.@"if";
+                if (other != .@"if") return false;
+                const this = self.@"if";
+                const oth = other.@"if";
 
                 if (!this.condition.eql(oth.condition) or
                     !this.block.eql(oth.block)) return false;
@@ -60,9 +63,9 @@ pub const Statement = struct {
                 } else if (oth.alternative) |_| return false;
             },
             .@"for" => {
-                if (other.variant != .@"for") return false;
-                const this = self.variant.@"for";
-                const oth = other.variant.@"for";
+                if (other != .@"for") return false;
+                const this = self.@"for";
+                const oth = other.@"for";
 
                 if (!this.access.eql(oth.access) or
                     !this.block.eql(oth.block)) return false;
@@ -73,27 +76,20 @@ pub const Statement = struct {
                 } else if (oth.alternative) |_| return false;
             },
             .block => {
-                if (other.variant != .block) return false;
-                const this = self.variant.block;
-                const oth = other.variant.block;
+                if (other != .block) return false;
+                const this = self.block;
+                const oth = other.block;
                 return this.eql(oth);
             },
             .expression => {
-                if (other.variant != .expression) return false;
-                const this = self.variant.expression;
-                const oth = other.variant.expression;
+                if (other != .expression) return false;
+                const this = self.expression;
+                const oth = other.expression;
                 return this.eql(oth);
             },
         }
         return true;
     }
-};
-
-pub const StatementVariant = union(enum) {
-    block: BlockStatement,
-    @"for": ForStatement,
-    @"if": IfStatement,
-    expression: ExpressionStatement,
 };
 
 pub const ForStatement = struct {
