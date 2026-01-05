@@ -3,7 +3,8 @@ const zemplate = @import("zemplate");
 const ast = zemplate.ast;
 const print = std.debug.print;
 const panic = std.debug.panic;
-const runTest = @import("shared.zig").runTest;
+const shared = @import("shared.zig");
+const runTest = shared.runTest;
 const Lexer = zemplate.Lexer;
 const Parser = zemplate.Parser;
 const Token = zemplate.Token;
@@ -29,6 +30,10 @@ fn parserTest() !void {
                 \\
             , .{ case.name, failure });
             return error.Failure;
+        } else {
+            std.log.warn(
+                \\{s}Case {s} Passed! {s}
+            , .{ shared.ansi.GREEN, case.name, shared.ansi.RESET });
         }
     }
 }
@@ -89,6 +94,8 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             \\ ||zz endif zz||
             \\ ||zz for .iterable json zz||
             \\ {|.|}
+            \\ ||zz else zz||
+            \\ {|.alternative|}
             \\ ||zz endfor zz||
             ,
             .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
@@ -97,14 +104,22 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                         .condition = try ast.ExpressionStatement.create(a, .{ .access = .{
                             .literal = try a.dupe(u8, ".something"),
                         } }),
-                        .block = .{ .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                            .{ .expression = try ast.ExpressionStatement.create(a, .{ .access = .{
-                                .literal = try a.dupe(u8, "."),
-                            } }) },
-                            .{ .expression = try ast.ExpressionStatement.create(a, .{ .access = .{
-                                .literal = try a.dupe(u8, ".subfield"),
-                            } }) },
-                        }) },
+                        .block = .{
+                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                .{
+                                    .expression = try ast.ExpressionStatement.create(a, .{
+                                        .access = .{
+                                            .literal = try a.dupe(u8, "."),
+                                        },
+                                    }),
+                                },
+                                .{ .expression = try ast.ExpressionStatement.create(a, .{
+                                    .access = .{
+                                        .literal = try a.dupe(u8, ".subfield"),
+                                    },
+                                }) },
+                            }),
+                        },
                         .alternative = null,
                     },
                 },
@@ -114,12 +129,24 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                             .literal = try a.dupe(u8, ".iterable"),
                             .json = true,
                         },
-                        .block = .{ .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                            .{ .expression = try ast.ExpressionStatement.create(a, .{ .access = .{
-                                .literal = try a.dupe(u8, "."),
-                            } }) },
-                        }) },
-                        .alternative = null,
+                        .block = .{
+                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                .{ .expression = try ast.ExpressionStatement.create(a, .{
+                                    .access = .{
+                                        .literal = try a.dupe(u8, "."),
+                                    },
+                                }) },
+                            }),
+                        },
+                        .alternative = .{
+                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                .{ .expression = try ast.ExpressionStatement.create(a, .{
+                                    .access = .{
+                                        .literal = try a.dupe(u8, ".alternative"),
+                                    },
+                                }) },
+                            }),
+                        },
                     },
                 },
             }),

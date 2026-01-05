@@ -29,11 +29,12 @@ const Self = @This();
 
 pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try writer.print(
-        \\ --- PARSER --- 
+        \\------ PARSER ------
         \\ arena usage: {d}
         \\ Lexer position: {d}
         \\ current token: {f}
         \\ peek token: {f}
+        \\
     , .{
         self.arena.queryCapacity(),
         self.lexer.pos,
@@ -43,10 +44,14 @@ pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
 
     if (self.prev_token) |t| {
         try writer.print(
-            \\
             \\ previous token: {f}
+            \\
         , .{t});
     }
+
+    try writer.writeAll(
+        \\--------------------
+    );
 }
 
 pub fn init(
@@ -85,8 +90,6 @@ pub fn parseProgram(self: *Self) Allocator.Error!ast.Program {
     var program = ast.Program{};
 
     while (!self.current_token.typ.eql(.eof)) {
-        if (self.current_token.typ == .statement_open) self.progressToken();
-
         const stmt = try self.parseStatement();
 
         if (self.errors.items.len > 0) {
@@ -108,30 +111,32 @@ pub fn parseProgram(self: *Self) Allocator.Error!ast.Program {
 
 fn parseStatement(self: *Self) Allocator.Error!?ast.Statement {
     switch (self.current_token.typ) {
-        .for_open => return .{ .@"for" = try self.parseForStatement() orelse {
-            try self.emitError(
-                \\ Failed to parse for statement
-                \\ Parser state:
-                \\ {f}
-            , .{self});
-            return null;
-        } },
-        .if_open => return .{ .@"if" = try self.parseIfStatement() orelse {
-            try self.emitError(
-                \\ Failed to parse if statement
-                \\ Parser state:
-                \\ {f}
-            , .{self});
-            return null;
-        } },
-        .@"else" => return .{ .block = try self.parseBlockStatement() orelse {
-            try self.emitError(
-                \\ Failed to parse block statement
-                \\ Parser state:
-                \\ {f}
-            , .{self});
-            return null;
-        } },
+        .statement_open => {
+            switch (self.peek_token.typ) {
+                .for_open => return .{ .@"for" = try self.parseForStatement() orelse {
+                    try self.emitError(
+                        \\ Failed to parse for statement
+                        \\{f}
+                    , .{self});
+                    return null;
+                } },
+                .if_open => return .{ .@"if" = try self.parseIfStatement() orelse {
+                    try self.emitError(
+                        \\ Failed to parse if statement
+                        \\{f}
+                    , .{self});
+                    return null;
+                } },
+                // .@"else" => return .{ .block = try self.parseBlockStatement() orelse {
+                //     try self.emitError(
+                //         \\ Failed to parse block statement
+                //         \\{f}
+                //     , .{self});
+                //     return null;
+                // } },
+                else => {},
+            }
+        },
         .expression_open => return .{ .expression = try self.parseExpressionStatement() orelse {
             try self.emitError(
                 \\ Failed to parse expression statement
@@ -178,12 +183,21 @@ fn parseAccessExpression(self: *Self) Allocator.Error!?ast.AccessExpression {
     return access;
 }
 
-fn parseBlockStatement(self: *Self) Allocator.Error!?ast.BlockStatement {
+/// currently only used for handling else blocks
+fn parseBlockStatement(self: *Self, closing_tag: Token.Type) Allocator.Error!?ast.BlockStatement {
+    switch (self.peek_token.typ) {
+        .@"else" => {},
+        else => log.warn(
+            \\ parseBlockStatement called with an unexpected peek: {any}
+        , .{self.peek_token.typ}),
+    }
+
     self.progressToken();
     if (!self.expectPeekAndProgress(.statement_close)) return null;
+    self.progressToken();
 
     var body = ArrayList(ast.Statement).empty;
-    while (self.peek_token.typ != .statement_open) {
+    while (self.peek_token.typ != closing_tag) {
         const statement = try self.parseStatement() orelse {
             try self.emitError(
                 \\ Expected statement in block
@@ -194,20 +208,23 @@ fn parseBlockStatement(self: *Self) Allocator.Error!?ast.BlockStatement {
         try body.append(self.arena.allocator(), statement);
     }
 
-    if (!self.expectPeekAndProgress(.statement_close)) return null;
-    self.progressToken();
+    if (self.current_token.typ != .statement_open) {
+        try self.emitError(
+            \\ Expected current_token to be .statement_open after parsing block
+            \\ Got: {any}
+        , .{self.current_token});
+        return null;
+    }
+
+    // if (!self.expectPeekAndProgress(.statement_open)) return null;
+    // self.progressToken();
     return .{
         .body = try body.toOwnedSlice(self.arena.allocator()),
     };
 }
 
 fn parseForStatement(self: *Self) Allocator.Error!?ast.ForStatement {
-    if (self.current_token.typ != .for_open) {
-        try self.emitError(
-            \\ Tried to parse for statement but the current token wasn't .for_open
-        , .{});
-        return null;
-    }
+    if (!self.expectPeekAndProgress(.for_open)) return null;
 
     // for statements can ONLY have access expressions, not comparison
     const access = try self.parseAccessExpression() orelse return null;
@@ -217,7 +234,12 @@ fn parseForStatement(self: *Self) Allocator.Error!?ast.ForStatement {
     var body = ArrayList(ast.Statement).empty;
     var alternative: ?ast.BlockStatement = null;
     while (self.peek_token.typ != .for_close) {
-        const is_else = self.current_token.typ == .@"else";
+        if (self.peek_token.typ == .@"else") {
+            alternative = try self.parseBlockStatement(.for_close);
+            log.warn("GOT ALTERNATIVE", .{});
+            continue;
+        }
+
         const statement = try self.parseStatement() orelse {
             try self.emitError(
                 \\ Expected statement in for block
@@ -225,16 +247,11 @@ fn parseForStatement(self: *Self) Allocator.Error!?ast.ForStatement {
             return null;
         };
 
-        // this may be wrong
-        if (is_else)
-            alternative = statement.block
-        else
-            try body.append(self.arena.allocator(), statement);
+        try body.append(self.arena.allocator(), statement);
     }
 
     if (!self.expectPeekAndProgress(.for_close)) return null;
     if (!self.expectPeekAndProgress(.statement_close)) return null;
-    self.progressToken();
 
     return .{
         .access = access,
@@ -246,12 +263,7 @@ fn parseForStatement(self: *Self) Allocator.Error!?ast.ForStatement {
 }
 
 fn parseIfStatement(self: *Self) Allocator.Error!?ast.IfStatement {
-    if (self.current_token.typ != .if_open) {
-        try self.emitError(
-            \\ Tried to parse if statement but the current token wasn't .if_open
-        , .{});
-        return null;
-    }
+    if (!self.expectPeekAndProgress(.if_open)) return null;
 
     const condition = try self.parseExpressionStatement() orelse {
         try self.emitError("Expected to encounter an expression condition statement in if statement", .{});
@@ -261,7 +273,10 @@ fn parseIfStatement(self: *Self) Allocator.Error!?ast.IfStatement {
     var body = ArrayList(ast.Statement).empty;
     var alternative: ?ast.BlockStatement = null;
     while (self.peek_token.typ != .if_close) {
-        const is_else = self.current_token.typ == .@"else";
+        if (self.peek_token.typ == .@"else") {
+            alternative = try self.parseBlockStatement(.if_close);
+            continue;
+        }
         const statement = try self.parseStatement() orelse {
             try self.emitError(
                 \\ Expected statement in if block
@@ -270,15 +285,11 @@ fn parseIfStatement(self: *Self) Allocator.Error!?ast.IfStatement {
         };
 
         // this may be wrong
-        if (is_else)
-            alternative = statement.block
-        else
-            try body.append(self.arena.allocator(), statement);
+        try body.append(self.arena.allocator(), statement);
     }
 
     if (!self.expectPeekAndProgress(.if_close)) return null;
     if (!self.expectPeekAndProgress(.statement_close)) return null;
-    self.progressToken();
 
     return .{
         .condition = condition,
@@ -348,13 +359,13 @@ fn parseExpressionStatement(self: *Self) Allocator.Error!?ast.ExpressionStatemen
     switch (self.current_token.typ) {
         .expression_close, .statement_close => {
             self.progressToken();
-            // _ = self.expectPeekAndProgress(t);
         },
         else => |t| {
             try self.emitError(
                 \\ Expected Expression statement to end with .expression_close or .statement_close
                 \\ Got: {any}
             , .{t});
+            return null;
         },
     }
 
