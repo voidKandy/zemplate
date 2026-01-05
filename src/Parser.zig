@@ -107,8 +107,6 @@ pub fn parseProgram(self: *Self) Allocator.Error!ast.Program {
 }
 
 fn parseStatement(self: *Self) Allocator.Error!?ast.Statement {
-    // _ = if (self.current_token.typ == .statement_open) self.progressToken();
-    //     self.current_token.typ == .statement_close) self.progressToken();
     switch (self.current_token.typ) {
         .for_open => return .{ .@"for" = try self.parseForStatement() orelse {
             try self.emitError(
@@ -219,6 +217,7 @@ fn parseForStatement(self: *Self) Allocator.Error!?ast.ForStatement {
     var body = ArrayList(ast.Statement).empty;
     var alternative: ?ast.BlockStatement = null;
     while (self.peek_token.typ != .for_close) {
+        const is_else = self.current_token.typ == .@"else";
         const statement = try self.parseStatement() orelse {
             try self.emitError(
                 \\ Expected statement in for block
@@ -227,7 +226,7 @@ fn parseForStatement(self: *Self) Allocator.Error!?ast.ForStatement {
         };
 
         // this may be wrong
-        if (statement == .block)
+        if (is_else)
             alternative = statement.block
         else
             try body.append(self.arena.allocator(), statement);
@@ -262,6 +261,7 @@ fn parseIfStatement(self: *Self) Allocator.Error!?ast.IfStatement {
     var body = ArrayList(ast.Statement).empty;
     var alternative: ?ast.BlockStatement = null;
     while (self.peek_token.typ != .if_close) {
+        const is_else = self.current_token.typ == .@"else";
         const statement = try self.parseStatement() orelse {
             try self.emitError(
                 \\ Expected statement in if block
@@ -270,7 +270,7 @@ fn parseIfStatement(self: *Self) Allocator.Error!?ast.IfStatement {
         };
 
         // this may be wrong
-        if (statement == .block)
+        if (is_else)
             alternative = statement.block
         else
             try body.append(self.arena.allocator(), statement);

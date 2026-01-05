@@ -16,35 +16,12 @@ pub const Statement = union(enum) {
 
     pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{s} statement:\n", .{@tagName(self)});
-        switch (self) {
-            .@"if" => |s| {
-                try writer.print(
-                    \\Condition:
-                    \\ {f}
-                , .{s.condition});
-
-                if (s.block.body.len > 0) {
-                    try writer.writeAll("If Body: \n");
-                    try s.block.format(writer);
-                    try writer.writeAll("EndBody\n");
-                }
-                if (s.alternative) |alt| try alt.format(writer);
-            },
-            .@"for" => |s| {
-                try writer.print(
-                    \\Access: {f}
-                , .{s.access});
-
-                if (s.block.body.len > 0) {
-                    try writer.writeAll("For Body: \n");
-                    try s.block.format(writer);
-                    try writer.writeAll("EndBody\n");
-                }
-                if (s.alternative) |alt| try alt.format(writer);
-            },
-            .block => |s| try s.format(writer),
-            .expression => |s| try s.format(writer),
-        }
+        try switch (self) {
+            .@"if" => |s| s.format(writer),
+            .@"for" => |s| s.format(writer),
+            .block => |s| s.format(writer),
+            .expression => |s| s.format(writer),
+        };
     }
 
     pub fn eql(self: @This(), other: @This()) bool {
@@ -53,27 +30,13 @@ pub const Statement = union(enum) {
                 if (other != .@"if") return false;
                 const this = self.@"if";
                 const oth = other.@"if";
-
-                if (!this.condition.eql(oth.condition) or
-                    !this.block.eql(oth.block)) return false;
-
-                if (this.alternative) |th_alt| {
-                    if (oth.alternative == null) return false;
-                    if (!oth.alternative.?.eql(th_alt)) return false;
-                } else if (oth.alternative) |_| return false;
+                return this.eql(oth);
             },
             .@"for" => {
                 if (other != .@"for") return false;
                 const this = self.@"for";
                 const oth = other.@"for";
-
-                if (!this.access.eql(oth.access) or
-                    !this.block.eql(oth.block)) return false;
-
-                if (this.alternative) |th_alt| {
-                    if (oth.alternative == null) return false;
-                    if (!oth.alternative.?.eql(th_alt)) return false;
-                } else if (oth.alternative) |_| return false;
+                return this.eql(oth);
             },
             .block => {
                 if (other != .block) return false;
@@ -96,6 +59,31 @@ pub const ForStatement = struct {
     access: AccessExpression,
     block: BlockStatement,
     alternative: ?BlockStatement,
+
+    pub fn eql(self: @This(), other: @This()) bool {
+        if (!self.access.eql(other.access) or
+            !self.block.eql(other.block)) return false;
+
+        if (self.alternative) |th_alt| {
+            if (other.alternative == null) return false;
+            if (!other.alternative.?.eql(th_alt)) return false;
+        } else if (other.alternative) |_| return false;
+
+        return true;
+    }
+
+    pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print(
+            \\Access: {f}
+        , .{self.access});
+
+        if (self.block.body.len > 0) {
+            try writer.writeAll("For Body: \n");
+            try self.block.format(writer);
+            try writer.writeAll("EndBody\n");
+        }
+        if (self.alternative) |alt| try alt.format(writer);
+    }
 };
 
 pub const BlockStatement = struct {
@@ -125,6 +113,31 @@ pub const IfStatement = struct {
     condition: ExpressionStatement,
     block: BlockStatement,
     alternative: ?BlockStatement,
+
+    pub fn eql(self: @This(), other: @This()) bool {
+        if (!self.condition.eql(other.condition) or
+            !self.block.eql(other.block)) return false;
+
+        if (self.alternative) |th_alt| {
+            if (other.alternative == null) return false;
+            if (!other.alternative.?.eql(th_alt)) return false;
+        } else if (other.alternative) |_| return false;
+        return true;
+    }
+
+    pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print(
+            \\Condition:
+            \\ {f}
+        , .{self.condition});
+
+        if (self.block.body.len > 0) {
+            try writer.writeAll("If Body: \n");
+            try self.block.format(writer);
+            try writer.writeAll("EndBody\n");
+        }
+        if (self.alternative) |alt| try alt.format(writer);
+    }
 };
 
 pub const ExpressionStatement = union(enum) {

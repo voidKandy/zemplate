@@ -13,10 +13,30 @@ test "parsing" {
     runTest("PARSING", parserTest);
 }
 
+fn parserTest() !void {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+
+    defer arena.deinit();
+
+    const cases = try initCases(arena.allocator());
+
+    for (cases) |case| {
+        if (try case.runTest(arena.allocator())) |failure| {
+            std.log.err(
+                \\
+                \\ {s} Test Failed:
+                \\ {f}
+                \\
+            , .{ case.name, failure });
+            return error.Failure;
+        }
+    }
+}
+
 const ParserTestCase = struct {
     name: []const u8,
     content: []const u8,
-    expected_statements: []const ast.Statement,
+    expected_statements: []ast.Statement,
 
     const Failure = struct {
         idx: usize,
@@ -37,6 +57,10 @@ const ParserTestCase = struct {
         var parser = try Parser.init(a, &lexer, null);
         // defer parser.deinit();
         const program = try parser.parseProgram();
+        // std.log.warn("EXPECTED: ", .{});
+        // for (self.expected_statements) |exp| {
+        //     std.log.warn("{f}", .{exp});
+        // }
 
         if (parser.errors.items.len > 0) {
             return error.HasError;
@@ -54,22 +78,6 @@ const ParserTestCase = struct {
     }
 };
 
-fn parserTest() !void {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    for (try initCases(arena.allocator())) |case| {
-        if (try case.runTest(arena.allocator())) |failure| {
-            std.log.err(
-                \\
-                \\ {s} Test Failed:
-                \\ {f}
-                \\
-            , .{ case.name, failure });
-            return error.Failure;
-        }
-    }
-}
-
 fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
     return try a.dupe(ParserTestCase, &[_]ParserTestCase{
         .{
@@ -83,7 +91,7 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             \\ {|.|}
             \\ ||zz endfor zz||
             ,
-            .expected_statements = &[_]ast.Statement{
+            .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
                 .{
                     .@"if" = .{
                         .condition = try ast.ExpressionStatement.create(a, .{ .access = .{
@@ -114,7 +122,7 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                         .alternative = null,
                     },
                 },
-            },
+            }),
         },
     });
 }
