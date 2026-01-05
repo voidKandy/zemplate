@@ -236,7 +236,6 @@ fn parseForStatement(self: *Self) Allocator.Error!?ast.ForStatement {
     while (self.peek_token.typ != .for_close) {
         if (self.peek_token.typ == .@"else") {
             alternative = try self.parseBlockStatement(.for_close);
-            log.warn("GOT ALTERNATIVE", .{});
             continue;
         }
 
