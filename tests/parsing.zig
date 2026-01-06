@@ -60,16 +60,11 @@ const ParserTestCase = struct {
     fn runTest(self: @This(), a: std.mem.Allocator) anyerror!?Failure {
         var lexer = Lexer.init(self.content[0..]);
         var parser = try Parser.init(a, &lexer, null);
-        // defer parser.deinit();
-        const program = try parser.parseProgram();
-        // std.log.warn("EXPECTED: ", .{});
-        // for (self.expected_statements) |exp| {
-        //     std.log.warn("{f}", .{exp});
-        // }
+        const program = parser.parseProgram() catch |e| {
+            parser.logErrors(std.log.scoped(.parserTest));
+            return e;
+        };
 
-        if (parser.errors.items.len > 0) {
-            return error.HasError;
-        }
         for (program.statements.items, 0..) |statement, i| {
             if (!self.expected_statements[i].eql(statement)) {
                 return .{
@@ -85,9 +80,6 @@ const ParserTestCase = struct {
 
 fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
     return try a.dupe(ParserTestCase, &[_]ParserTestCase{
-        // -----------------------------
-        // IF
-        // -----------------------------
         .{
             .name = "if statement",
             .content =
@@ -128,9 +120,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             }),
         },
 
-        // -----------------------------
-        // IF / ELSE IF
-        // -----------------------------
         .{
             .name = "if else-if statement",
             .content =
@@ -182,9 +171,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             }),
         },
 
-        // -----------------------------
-        // FOR
-        // -----------------------------
         .{
             .name = "for statement",
             .content =
@@ -216,9 +202,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             }),
         },
 
-        // -----------------------------
-        // FOR / ELSE
-        // -----------------------------
         .{
             .name = "for else statement",
             .content =
@@ -260,6 +243,46 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                 }),
                             },
                         },
+                    },
+                },
+            }),
+        },
+
+        .{
+            .name = "conditional statement",
+            .content =
+            \\ ||zz if .something > 20 zz||
+            \\ {|.|}
+            \\ ||zz endif zz||
+            ,
+            .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
+                .{
+                    .@"if" = .{
+                        .condition = try ast.ExpressionStatement.create(a, .{
+                            .comparison = .{
+                                .operator = .greater_than,
+                                .left = try ast.ExpressionStatement.create(a, .{
+                                    .access = .{
+                                        .literal = try a.dupe(u8, ".something"),
+                                    },
+                                }),
+                                .right = try ast.ExpressionStatement.create(a, .{
+                                    .literal = .{ .integer = 20 },
+                                }),
+                            },
+                        }),
+                        .block = .{
+                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                .{
+                                    .expression = try ast.ExpressionStatement.create(a, .{
+                                        .access = .{
+                                            .literal = try a.dupe(u8, "."),
+                                        },
+                                    }),
+                                },
+                            }),
+                        },
+                        .alternative = null,
                     },
                 },
             }),

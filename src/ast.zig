@@ -70,6 +70,7 @@ pub const ElseBlock = struct {
         if (self.condition) |cond| {
             try writer.writeAll(
                 \\ Condition:
+                \\
             );
             try cond.format(writer);
         }
@@ -112,6 +113,7 @@ pub const BlockStatement = struct {
     body: []Statement,
 
     pub fn eql(self: @This(), other: @This()) bool {
+        if (self.body.len != other.body.len) return false;
         for (self.body, other.body) |th, ot| {
             if (!th.eql(ot)) return false;
         }
@@ -199,9 +201,18 @@ pub const ExpressionStatement = union(enum) {
                 try writer.print("{f}", .{exp.*});
             },
             .comparison => |exp| {
-                try writer.print("Operator: {any}", .{exp.*.operator});
-                try writer.print("Left: {f}", .{exp.*.left});
-                try writer.print("Right: {f}", .{exp.*.right});
+                try writer.print(
+                    \\Operator: {any}
+                    \\
+                , .{exp.*.operator});
+                try writer.print(
+                    \\Left: {f}
+                    \\
+                , .{exp.*.left});
+                try writer.print(
+                    \\Right: {f}
+                    \\
+                , .{exp.*.right});
             },
             .literal => |exp| {
                 try writer.print("{f}", .{exp.*});
@@ -315,7 +326,7 @@ pub const LiteralExpression = union(enum) {
     }
 
     pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        try writer.print("{any} literal:", .{self});
+        try writer.print("{s} literal: ", .{@tagName(self)});
 
         switch (self) {
             .integer => |int| {
@@ -328,6 +339,7 @@ pub const LiteralExpression = union(enum) {
                 try writer.print("{any}", .{b});
             },
         }
+        try writer.writeByte('\n');
     }
 
     pub fn tryFromStringLiteral(literal: []const u8) ?@This() {

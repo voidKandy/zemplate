@@ -86,20 +86,29 @@ pub fn deinit(self: *Self) void {
     self.lexer.deinit();
 }
 
-pub fn parseProgram(self: *Self) Allocator.Error!ast.Program {
+const ParseError = error{ OutOfMemory, Unexpected };
+
+pub fn logErrors(self: Self, _log: anytype) void {
+    if (!@hasDecl(_log, "err") or
+        !@hasDecl(_log, "warn") or
+        !@hasDecl(_log, "info") or
+        !@hasDecl(_log, "debug")) @panic("invalid type passed to logErrors");
+
+    for (self.errors.items) |e| {
+        _log.err("{s}", .{e});
+    }
+}
+
+pub fn parseProgram(self: *Self) ParseError!ast.Program {
     var program = ast.Program{};
 
     while (!self.current_token.typ.eql(.eof)) {
         const stmt = try self.parseStatement();
 
         if (self.errors.items.len > 0) {
-            for (self.errors.items) |e| {
-                log.err(
-                    \\ Parser Error: {s}
-                , .{e});
-            }
-            return program;
+            return error.Unexpected;
         }
+
         if (stmt) |s|
             try program.statements.append(self.arena.allocator(), s);
 
@@ -154,8 +163,6 @@ fn parseStatement(self: *Self) Allocator.Error!?ast.Statement {
     return null;
 }
 
-/// `peek_token` will be either `.expression_close` | `.statement_close`
-/// after this function completes successfully
 fn parseAccessExpression(self: *Self) Allocator.Error!?ast.AccessExpression {
     if (!self.expectPeekAndProgress(.access)) {
         try self.emitError("Expected to encounter an access expression", .{});
@@ -166,7 +173,7 @@ fn parseAccessExpression(self: *Self) Allocator.Error!?ast.AccessExpression {
     };
 
     while (self.peek_token.typ != .expression_close and
-        self.peek_token.typ != .statement_close)
+        self.peek_token.typ != .statement_close and !self.peek_token.typ.isComparison())
     {
         // when more serialization options are added
         // this will need to account for those
@@ -327,7 +334,7 @@ fn parseIfStatement(self: *Self) Allocator.Error!?ast.IfStatement {
 /// Expressions can appear between something following
 /// `statement_open` & `statement_close` | `expression_open` & `expression_close`
 fn parseExpressionStatement(self: *Self) Allocator.Error!?ast.ExpressionStatement {
-    const left = blk: {
+    const first = blk: {
         switch (self.peek_token.typ) {
             .literal => {
                 const literal_expr =
@@ -342,6 +349,7 @@ fn parseExpressionStatement(self: *Self) Allocator.Error!?ast.ExpressionStatemen
                     try ast.ExpressionStatement.create(self.arena.allocator(), .{ .literal = literal_expr });
 
                 std.debug.assert(self.expectPeekAndProgress(.literal));
+                self.progressToken();
                 break :blk expr;
             },
             .access => break :blk try ast.ExpressionStatement.create(
@@ -358,38 +366,32 @@ fn parseExpressionStatement(self: *Self) Allocator.Error!?ast.ExpressionStatemen
         }
     };
 
-    const return_value = blk: {
-        if (!self.peek_token.typ.isComparison()) break :blk left;
-
-        const operator = ast.ComparisonExpression.Operator.tryFromTokenType(self.peek_token.typ).?;
-        self.progressToken();
-        const right = try self.parseExpressionStatement() orelse {
-            try self.emitError("Failed to parse right side expression in comparison\n", .{});
-            return null;
-        };
-        break :blk try ast.ExpressionStatement.create(self.arena.allocator(), .{ .comparison = .{
-            .operator = operator,
-            .left = left,
-            .right = right,
-        } });
-    };
-
-    switch (self.current_token.typ) {
-        .expression_close, .statement_close => {
-            self.progressToken();
-        },
-        else => |t| {
-            try self.emitError(
-                \\ Expected Expression statement to end with .expression_close or .statement_close
-                \\ Got: {any}
-            , .{t});
-            return null;
-        },
+    if (!self.current_token.typ.isComparison()) {
+        switch (self.current_token.typ) {
+            .expression_close, .statement_close => {
+                self.progressToken();
+            },
+            else => |t| {
+                try self.emitError(
+                    \\ Expected expression statement to end with .expression_close or .statement_close
+                    \\ Got: {any}
+                , .{t});
+                return null;
+            },
+        }
+        return first;
     }
 
-    // self.progressToken();
-
-    return return_value;
+    const operator = ast.ComparisonExpression.Operator.tryFromTokenType(self.current_token.typ).?;
+    const right = try self.parseExpressionStatement() orelse {
+        try self.emitError("Failed to parse right side expression in comparison\n", .{});
+        return null;
+    };
+    return try ast.ExpressionStatement.create(self.arena.allocator(), .{ .comparison = .{
+        .operator = operator,
+        .left = first,
+        .right = right,
+    } });
 }
 
 /// Progresses token, skipping whitespace and updating prev/current/peek
