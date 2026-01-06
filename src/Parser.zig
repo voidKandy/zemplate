@@ -183,18 +183,30 @@ fn parseAccessExpression(self: *Self) Allocator.Error!?ast.AccessExpression {
     return access;
 }
 
-/// currently only used for handling else blocks
-fn parseBlockStatement(self: *Self, closing_tag: Token.Type) Allocator.Error!?ast.BlockStatement {
-    switch (self.peek_token.typ) {
-        .@"else" => {},
-        else => log.warn(
-            \\ parseBlockStatement called with an unexpected peek: {any}
-        , .{self.peek_token.typ}),
+fn parseElseBlock(self: *Self, closing_tag: Token.Type) Allocator.Error!?ast.ElseBlock {
+    if (!self.expectPeekAndProgress(.@"else")) return null;
+
+    var condition: ?ast.ExpressionStatement = null;
+    if (self.peek_token.typ == .if_open) {
+        _ = self.expectPeekAndProgress(.if_open);
+        condition = try self.parseExpressionStatement() orelse {
+            try self.emitError(
+                \\ Else statement contained 'if' but no condition followed
+            , .{});
+            return null;
+        };
+    } else {
+        if (!self.expectPeekAndProgress(.statement_close)) return null;
+        self.progressToken();
     }
 
-    self.progressToken();
-    if (!self.expectPeekAndProgress(.statement_close)) return null;
-    self.progressToken();
+    if (self.prev_token.?.typ != .statement_close) {
+        try self.emitError(
+            \\ Expected prev_token to be .statement_close after parsing beginning of else statement
+            \\ Got: {any}
+        , .{self.prev_token.?.typ});
+        return null;
+    }
 
     var body = ArrayList(ast.Statement).empty;
     while (self.peek_token.typ != closing_tag) {
@@ -219,7 +231,10 @@ fn parseBlockStatement(self: *Self, closing_tag: Token.Type) Allocator.Error!?as
     // if (!self.expectPeekAndProgress(.statement_open)) return null;
     // self.progressToken();
     return .{
-        .body = try body.toOwnedSlice(self.arena.allocator()),
+        .condition = condition,
+        .block = .{
+            .body = try body.toOwnedSlice(self.arena.allocator()),
+        },
     };
 }
 
@@ -232,10 +247,15 @@ fn parseForStatement(self: *Self) Allocator.Error!?ast.ForStatement {
     // if (!self.expectPeekAndProgress(.statement_close)) return null;
 
     var body = ArrayList(ast.Statement).empty;
-    var alternative: ?ast.BlockStatement = null;
+    var alternative: ?ast.ElseBlock = null;
     while (self.peek_token.typ != .for_close) {
         if (self.peek_token.typ == .@"else") {
-            alternative = try self.parseBlockStatement(.for_close);
+            alternative = try self.parseElseBlock(.for_close) orelse {
+                try self.emitError(
+                    \\ Failed to parse For else block
+                , .{});
+                return null;
+            };
             continue;
         }
 
@@ -270,10 +290,15 @@ fn parseIfStatement(self: *Self) Allocator.Error!?ast.IfStatement {
     };
 
     var body = ArrayList(ast.Statement).empty;
-    var alternative: ?ast.BlockStatement = null;
+    var alternative: ?ast.ElseBlock = null;
     while (self.peek_token.typ != .if_close) {
         if (self.peek_token.typ == .@"else") {
-            alternative = try self.parseBlockStatement(.if_close);
+            alternative = try self.parseElseBlock(.if_close) orelse {
+                try self.emitError(
+                    \\ Failed to parse If else block
+                , .{});
+                return null;
+            };
             continue;
         }
         const statement = try self.parseStatement() orelse {
@@ -299,10 +324,8 @@ fn parseIfStatement(self: *Self) Allocator.Error!?ast.IfStatement {
     };
 }
 
-/// Expressions can appear between
-/// something following `statement_open` (for or if open) & `statement_close`
-/// or
-/// `expression_open` & `expression_close`
+/// Expressions can appear between something following
+/// `statement_open` & `statement_close` | `expression_open` & `expression_close`
 fn parseExpressionStatement(self: *Self) Allocator.Error!?ast.ExpressionStatement {
     const left = blk: {
         switch (self.peek_token.typ) {
@@ -315,20 +338,16 @@ fn parseExpressionStatement(self: *Self) Allocator.Error!?ast.ExpressionStatemen
                         return null;
                     };
 
-                const left =
+                const expr =
                     try ast.ExpressionStatement.create(self.arena.allocator(), .{ .literal = literal_expr });
 
                 std.debug.assert(self.expectPeekAndProgress(.literal));
-                break :blk left;
+                break :blk expr;
             },
-            .access => {
-                const left = try ast.ExpressionStatement.create(
-                    self.arena.allocator(),
-                    .{ .access = try self.parseAccessExpression() orelse return null },
-                );
-                // std.debug.assert(self.expectPeekAndProgress(.access));
-                break :blk left;
-            },
+            .access => break :blk try ast.ExpressionStatement.create(
+                self.arena.allocator(),
+                .{ .access = try self.parseAccessExpression() orelse return null },
+            ),
             else => {
                 try self.emitError(
                     \\ Cannot parse expression statement starting with token: {any}

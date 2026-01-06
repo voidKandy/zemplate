@@ -55,10 +55,32 @@ pub const Statement = union(enum) {
     }
 };
 
+pub const ElseBlock = struct {
+    condition: ?ExpressionStatement,
+    block: BlockStatement,
+    pub fn eql(self: @This(), other: @This()) bool {
+        if (self.condition) |c| {
+            if (other.condition == null) return false;
+            if (!c.eql(other.condition.?)) return false;
+        } else if (other.condition != null) return false;
+        return self.block.eql(other.block);
+    }
+
+    pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        if (self.condition) |cond| {
+            try writer.writeAll(
+                \\ Condition:
+            );
+            try cond.format(writer);
+        }
+        try self.block.format(writer);
+    }
+};
+
 pub const ForStatement = struct {
     access: AccessExpression,
     block: BlockStatement,
-    alternative: ?BlockStatement,
+    alternative: ?ElseBlock,
 
     pub fn eql(self: @This(), other: @This()) bool {
         if (!self.access.eql(other.access) or
@@ -80,7 +102,7 @@ pub const ForStatement = struct {
         if (self.block.body.len > 0) {
             try writer.writeAll("For Body: \n");
             try self.block.format(writer);
-            try writer.writeAll("EndBody\n");
+            try writer.writeAll("End For Body\n");
         }
         if (self.alternative) |alt| try alt.format(writer);
     }
@@ -112,7 +134,7 @@ pub const BlockStatement = struct {
 pub const IfStatement = struct {
     condition: ExpressionStatement,
     block: BlockStatement,
-    alternative: ?BlockStatement,
+    alternative: ?ElseBlock,
 
     pub fn eql(self: @This(), other: @This()) bool {
         if (!self.condition.eql(other.condition) or
@@ -134,7 +156,7 @@ pub const IfStatement = struct {
         if (self.block.body.len > 0) {
             try writer.writeAll("If Body: \n");
             try self.block.format(writer);
-            try writer.writeAll("EndBody\n");
+            try writer.writeAll("End If Body\n");
         }
         if (self.alternative) |alt| try alt.format(writer);
     }
