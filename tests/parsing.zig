@@ -332,5 +332,100 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                 },
             }),
         },
+        .{
+            .name = "nested if statement",
+            .content =
+            \\ ||zz if .outer zz||
+            \\ {|.|}
+            \\ ||zz if .inner zz||
+            \\ {|.|}
+            \\ ||zz endif zz||
+            \\ ||zz endif zz||
+            ,
+            .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
+                .{
+                    .@"if" = .{
+                        .condition = try ast.ExpressionStatement.create(a, .{
+                            .access = .{
+                                .literal = try a.dupe(u8, ".outer"),
+                            },
+                        }),
+                        .block = .{
+                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                .{
+                                    .@"if" = .{
+                                        .condition = try ast.ExpressionStatement.create(a, .{
+                                            .access = .{
+                                                .literal = try a.dupe(u8, ".inner"),
+                                            },
+                                        }),
+                                        .block = .{
+                                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                                .{
+                                                    .expression = try ast.ExpressionStatement.create(a, .{
+                                                        .access = .{
+                                                            .literal = try a.dupe(u8, "."),
+                                                        },
+                                                    }),
+                                                },
+                                            }),
+                                        },
+                                        .alternatives = null,
+                                    },
+                                },
+                            }),
+                        },
+                        .alternatives = null,
+                    },
+                },
+            }),
+        },
+
+        .{
+            .name = "nested for statement",
+            .content =
+            \\ ||zz for .outer_iterable zz||
+            \\ {|.|}
+            \\ ||zz for .inner_iterable zz||
+            \\ {|.|}
+            \\ ||zz endfor zz||
+            \\ ||zz endfor zz||
+            ,
+            .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
+                .{
+                    .@"for" = .{
+                        .access = .{
+                            .literal = try a.dupe(u8, ".outer_iterable"),
+                            .json = false,
+                        },
+                        .block = .{
+                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                .{
+                                    .@"for" = .{
+                                        .access = .{
+                                            .literal = try a.dupe(u8, ".inner_iterable"),
+                                            .json = false,
+                                        },
+                                        .block = .{
+                                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                                .{
+                                                    .expression = try ast.ExpressionStatement.create(a, .{
+                                                        .access = .{
+                                                            .literal = try a.dupe(u8, "."),
+                                                        },
+                                                    }),
+                                                },
+                                            }),
+                                        },
+                                        .alternatives = null,
+                                    },
+                                },
+                            }),
+                        },
+                        .alternatives = null,
+                    },
+                },
+            }),
+        },
     });
 }
