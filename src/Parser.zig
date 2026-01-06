@@ -92,7 +92,7 @@ pub fn logErrors(self: Self, _log: anytype) void {
     if (!@hasDecl(_log, "err") or
         !@hasDecl(_log, "warn") or
         !@hasDecl(_log, "info") or
-        !@hasDecl(_log, "debug")) @panic("invalid type passed to logErrors");
+        !@hasDecl(_log, "debug")) @panic("_log should be a type returned by std.log.scoped");
 
     for (self.errors.items) |e| {
         _log.err("{s}", .{e});
@@ -190,8 +190,16 @@ fn parseAccessExpression(self: *Self) Allocator.Error!?ast.AccessExpression {
     return access;
 }
 
-fn parseElseBlock(self: *Self, closing_tag: Token.Type) Allocator.Error!?ast.ElseBlock {
+fn parseElseBlock(self: *Self, if_or_for: enum { @"if", @"for" }) Allocator.Error!?ast.ElseBlock {
     if (!self.expectPeekAndProgress(.@"else")) return null;
+
+    const opening_tag: Token.Type, const closing_tag: Token.Type =
+        switch (if_or_for) {
+            .@"for" => .{ .for_open, .for_close },
+            .@"if" => .{ .if_open, .if_close },
+        };
+    // this needs to be used to properly manage nested if statements inside else
+    _ = opening_tag;
 
     var condition: ?ast.ExpressionStatement = null;
     if (self.peek_token.typ == .if_open) {
@@ -253,27 +261,32 @@ fn parseForStatement(self: *Self) Allocator.Error!?ast.ForStatement {
     self.progressToken();
     // if (!self.expectPeekAndProgress(.statement_close)) return null;
 
-    var body = ArrayList(ast.Statement).empty;
-    var alternative: ?ast.ElseBlock = null;
-    while (self.peek_token.typ != .for_close) {
-        if (self.peek_token.typ == .@"else") {
-            alternative = try self.parseElseBlock(.for_close) orelse {
-                try self.emitError(
-                    \\ Failed to parse For else block
-                , .{});
-                return null;
-            };
-            continue;
+    var body: ArrayList(ast.Statement) = .empty;
+    var alternatives: ArrayList(ast.ElseBlock) = .empty;
+
+    while (true) {
+        switch (self.peek_token.typ) {
+            .for_close => break,
+            .@"else" => {
+                try alternatives.append(self.arena.allocator(), try self.parseElseBlock(.@"for") orelse {
+                    try self.emitError(
+                        \\ Failed to parse For else block
+                    , .{});
+                    return null;
+                });
+                continue;
+            },
+            else => {
+                const statement = try self.parseStatement() orelse {
+                    try self.emitError(
+                        \\ Expected statement in for block
+                    , .{});
+                    return null;
+                };
+
+                try body.append(self.arena.allocator(), statement);
+            },
         }
-
-        const statement = try self.parseStatement() orelse {
-            try self.emitError(
-                \\ Expected statement in for block
-            , .{});
-            return null;
-        };
-
-        try body.append(self.arena.allocator(), statement);
     }
 
     if (!self.expectPeekAndProgress(.for_close)) return null;
@@ -281,7 +294,7 @@ fn parseForStatement(self: *Self) Allocator.Error!?ast.ForStatement {
 
     return .{
         .access = access,
-        .alternative = alternative,
+        .alternatives = if (alternatives.items.len == 0) null else try alternatives.toOwnedSlice(self.arena.allocator()),
         .block = .{
             .body = try body.toOwnedSlice(self.arena.allocator()),
         },
@@ -296,27 +309,32 @@ fn parseIfStatement(self: *Self) Allocator.Error!?ast.IfStatement {
         return null;
     };
 
-    var body = ArrayList(ast.Statement).empty;
-    var alternative: ?ast.ElseBlock = null;
-    while (self.peek_token.typ != .if_close) {
-        if (self.peek_token.typ == .@"else") {
-            alternative = try self.parseElseBlock(.if_close) orelse {
-                try self.emitError(
-                    \\ Failed to parse If else block
-                , .{});
-                return null;
-            };
-            continue;
-        }
-        const statement = try self.parseStatement() orelse {
-            try self.emitError(
-                \\ Expected statement in if block
-            , .{});
-            return null;
-        };
+    var body: ArrayList(ast.Statement) = .empty;
+    var alternatives: ArrayList(ast.ElseBlock) = .empty;
 
-        // this may be wrong
-        try body.append(self.arena.allocator(), statement);
+    while (true) {
+        switch (self.peek_token.typ) {
+            .if_close => break,
+            .@"else" => {
+                try alternatives.append(self.arena.allocator(), try self.parseElseBlock(.@"if") orelse {
+                    try self.emitError(
+                        \\ Failed to parse If else block
+                    , .{});
+                    return null;
+                });
+                continue;
+            },
+            else => {
+                const statement = try self.parseStatement() orelse {
+                    try self.emitError(
+                        \\ Expected statement in if block
+                    , .{});
+                    return null;
+                };
+
+                try body.append(self.arena.allocator(), statement);
+            },
+        }
     }
 
     if (!self.expectPeekAndProgress(.if_close)) return null;
@@ -324,7 +342,7 @@ fn parseIfStatement(self: *Self) Allocator.Error!?ast.IfStatement {
 
     return .{
         .condition = condition,
-        .alternative = alternative,
+        .alternatives = if (alternatives.items.len == 0) null else try alternatives.toOwnedSlice(self.arena.allocator()),
         .block = .{
             .body = try body.toOwnedSlice(self.arena.allocator()),
         },

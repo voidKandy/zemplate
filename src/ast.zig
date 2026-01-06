@@ -81,17 +81,16 @@ pub const ElseBlock = struct {
 pub const ForStatement = struct {
     access: AccessExpression,
     block: BlockStatement,
-    alternative: ?ElseBlock,
+    alternatives: ?[]ElseBlock,
 
     pub fn eql(self: @This(), other: @This()) bool {
         if (!self.access.eql(other.access) or
             !self.block.eql(other.block)) return false;
 
-        if (self.alternative) |th_alt| {
-            if (other.alternative == null) return false;
-            if (!other.alternative.?.eql(th_alt)) return false;
-        } else if (other.alternative) |_| return false;
-
+        if (self.alternatives) |th_alt| {
+            if (other.alternatives == null or other.alternatives.?.len != th_alt.len) return false;
+            for (th_alt, other.alternatives.?) |th, o| if (!th.eql(o)) return false;
+        } else if (other.alternatives) |_| return false;
         return true;
     }
 
@@ -105,7 +104,7 @@ pub const ForStatement = struct {
             try self.block.format(writer);
             try writer.writeAll("End For Body\n");
         }
-        if (self.alternative) |alt| try alt.format(writer);
+        if (self.alternatives) |alts| for (alts) |alt| try alt.format(writer);
     }
 };
 
@@ -136,16 +135,16 @@ pub const BlockStatement = struct {
 pub const IfStatement = struct {
     condition: ExpressionStatement,
     block: BlockStatement,
-    alternative: ?ElseBlock,
+    alternatives: ?[]ElseBlock,
 
     pub fn eql(self: @This(), other: @This()) bool {
         if (!self.condition.eql(other.condition) or
             !self.block.eql(other.block)) return false;
 
-        if (self.alternative) |th_alt| {
-            if (other.alternative == null) return false;
-            if (!other.alternative.?.eql(th_alt)) return false;
-        } else if (other.alternative) |_| return false;
+        if (self.alternatives) |th_alt| {
+            if (other.alternatives == null or other.alternatives.?.len != th_alt.len) return false;
+            for (th_alt, other.alternatives.?) |th, o| if (!th.eql(o)) return false;
+        } else if (other.alternatives) |_| return false;
         return true;
     }
 
@@ -160,7 +159,7 @@ pub const IfStatement = struct {
             try self.block.format(writer);
             try writer.writeAll("End If Body\n");
         }
-        if (self.alternative) |alt| try alt.format(writer);
+        if (self.alternatives) |alts| for (alts) |alt| try alt.format(writer);
     }
 };
 
