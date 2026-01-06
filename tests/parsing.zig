@@ -249,9 +249,15 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
         },
 
         .{
-            .name = "conditional statement",
+            .name = "conditional statements",
             .content =
             \\ ||zz if .something > 20 zz||
+            \\ {|.|}
+            \\ ||zz endif zz||
+            \\ ||zz if .something == 50 zz||
+            \\ {|.|}
+            \\ ||zz endif zz||
+            \\ ||zz if .something == .other_thing zz||
             \\ {|.|}
             \\ ||zz endif zz||
             ,
@@ -268,6 +274,66 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                 }),
                                 .right = try ast.ExpressionStatement.create(a, .{
                                     .literal = .{ .integer = 20 },
+                                }),
+                            },
+                        }),
+                        .block = .{
+                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                .{
+                                    .expression = try ast.ExpressionStatement.create(a, .{
+                                        .access = .{
+                                            .literal = try a.dupe(u8, "."),
+                                        },
+                                    }),
+                                },
+                            }),
+                        },
+                        .alternative = null,
+                    },
+                },
+                .{
+                    .@"if" = .{
+                        .condition = try ast.ExpressionStatement.create(a, .{
+                            .comparison = .{
+                                .operator = .equal_to,
+                                .left = try ast.ExpressionStatement.create(a, .{
+                                    .access = .{
+                                        .literal = try a.dupe(u8, ".something"),
+                                    },
+                                }),
+                                .right = try ast.ExpressionStatement.create(a, .{
+                                    .literal = .{ .integer = 50 },
+                                }),
+                            },
+                        }),
+                        .block = .{
+                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                .{
+                                    .expression = try ast.ExpressionStatement.create(a, .{
+                                        .access = .{
+                                            .literal = try a.dupe(u8, "."),
+                                        },
+                                    }),
+                                },
+                            }),
+                        },
+                        .alternative = null,
+                    },
+                },
+                .{
+                    .@"if" = .{
+                        .condition = try ast.ExpressionStatement.create(a, .{
+                            .comparison = .{
+                                .operator = .equal_to,
+                                .left = try ast.ExpressionStatement.create(a, .{
+                                    .access = .{
+                                        .literal = try a.dupe(u8, ".something"),
+                                    },
+                                }),
+                                .right = try ast.ExpressionStatement.create(a, .{
+                                    .access = .{
+                                        .literal = try a.dupe(u8, ".other_thing"),
+                                    },
                                 }),
                             },
                         }),
