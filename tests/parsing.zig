@@ -353,6 +353,13 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                         .block = .{
                             .body = try a.dupe(ast.Statement, &[_]ast.Statement{
                                 .{
+                                    .expression = try ast.ExpressionStatement.create(a, .{
+                                        .access = .{
+                                            .literal = try a.dupe(u8, "."),
+                                        },
+                                    }),
+                                },
+                                .{
                                     .@"if" = .{
                                         .condition = try ast.ExpressionStatement.create(a, .{
                                             .access = .{
@@ -400,6 +407,13 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                         },
                         .block = .{
                             .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                .{
+                                    .expression = try ast.ExpressionStatement.create(a, .{
+                                        .access = .{
+                                            .literal = try a.dupe(u8, "."),
+                                        },
+                                    }),
+                                },
                                 .{
                                     .@"for" = .{
                                         .access = .{
