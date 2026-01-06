@@ -150,9 +150,9 @@ fn parseStatement(self: *Self) Allocator.Error!?ast.Statement {
         else => {},
     }
 
-    self.emitError(
-        \\ Could not parse statement that begins with token: {f}
-    , .{self.current_token}) catch @panic("OOM");
+    try self.emitError(
+        \\ Could not parse statement that begins with token: {f}  
+    , .{self.current_token});
     return null;
 }
 
@@ -186,19 +186,20 @@ fn parseAccessExpression(self: *Self) Allocator.Error!?ast.AccessExpression {
 fn parseElseBlock(self: *Self, if_or_for: enum { @"if", @"for" }) Allocator.Error!?ast.ElseBlock {
     if (!self.expectPeekAndProgress(.@"else")) return null;
 
-    var condition: ?ast.ExpressionStatement = null;
-    if (self.peek_token.typ == .if_open) {
+    const condition: ?ast.ExpressionStatement = get_condition: {
+        if (self.peek_token.typ != .if_open) {
+            if (!self.expectPeekAndProgress(.statement_close)) return null;
+            self.progressToken();
+            break :get_condition null;
+        }
         _ = self.expectPeekAndProgress(.if_open);
-        condition = try self.parseExpressionStatement() orelse {
+        break :get_condition try self.parseExpressionStatement() orelse {
             try self.emitError(
                 \\ Else statement contained 'if' but no condition followed
             , .{});
             return null;
         };
-    } else {
-        if (!self.expectPeekAndProgress(.statement_close)) return null;
-        self.progressToken();
-    }
+    };
 
     if (self.prev_token.?.typ != .statement_close) {
         try self.emitError(
@@ -217,6 +218,7 @@ fn parseElseBlock(self: *Self, if_or_for: enum { @"if", @"for" }) Allocator.Erro
         };
 
     while (true) {
+        if (self.peek_token.typ == .@"else") break;
         if (self.peek_token.typ == closing_tag) {
             if (nesting_depth == 0) break else nesting_depth -= 1;
         }

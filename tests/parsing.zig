@@ -441,5 +441,111 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                 },
             }),
         },
+
+        .{
+            .name = "nested for with if and multiple elses",
+            .content =
+            \\ ||zz for .items zz||
+            \\ ||zz if .condition zz||
+            \\ {|.|}
+            \\ ||zz else if .other_condition zz||
+            \\ {|.other|}
+            \\ ||zz else zz||
+            \\ {|.fallback|}
+            \\ ||zz endif zz||
+            \\ ||zz else zz||
+            \\ {|.empty|}
+            \\ ||zz endfor zz||
+            ,
+            .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
+                .{
+                    .@"for" = .{
+                        .access = .{
+                            .literal = try a.dupe(u8, ".items"),
+                            .json = false,
+                        },
+                        .block = .{
+                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                .{
+                                    .@"if" = .{
+                                        // IF condition
+                                        .condition = try ast.ExpressionStatement.create(a, .{
+                                            .access = .{
+                                                .literal = try a.dupe(u8, ".condition"),
+                                            },
+                                        }),
+                                        .block = .{
+                                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                                .{
+                                                    .expression = try ast.ExpressionStatement.create(a, .{
+                                                        .access = .{
+                                                            .literal = try a.dupe(u8, "."),
+                                                        },
+                                                    }),
+                                                },
+                                            }),
+                                        },
+                                        // IF alternatives
+                                        .alternatives = try a.dupe(ast.ElseBlock, &[_]ast.ElseBlock{
+                                            // else if
+                                            .{
+                                                .condition = try ast.ExpressionStatement.create(a, .{
+                                                    .access = .{
+                                                        .literal = try a.dupe(u8, ".other_condition"),
+                                                    },
+                                                }),
+                                                .block = .{
+                                                    .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                                        .{
+                                                            .expression = try ast.ExpressionStatement.create(a, .{
+                                                                .access = .{
+                                                                    .literal = try a.dupe(u8, ".other"),
+                                                                },
+                                                            }),
+                                                        },
+                                                    }),
+                                                },
+                                            },
+                                            // else
+                                            .{
+                                                .condition = null,
+                                                .block = .{
+                                                    .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                                        .{
+                                                            .expression = try ast.ExpressionStatement.create(a, .{
+                                                                .access = .{
+                                                                    .literal = try a.dupe(u8, ".fallback"),
+                                                                },
+                                                            }),
+                                                        },
+                                                    }),
+                                                },
+                                            },
+                                        }),
+                                    },
+                                },
+                            }),
+                        },
+                        // FOR alternatives
+                        .alternatives = try a.dupe(ast.ElseBlock, &[_]ast.ElseBlock{
+                            .{
+                                .condition = null,
+                                .block = .{
+                                    .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                        .{
+                                            .expression = try ast.ExpressionStatement.create(a, .{
+                                                .access = .{
+                                                    .literal = try a.dupe(u8, ".empty"),
+                                                },
+                                            }),
+                                        },
+                                    }),
+                                },
+                            },
+                        }),
+                    },
+                },
+            }),
+        },
     });
 }
