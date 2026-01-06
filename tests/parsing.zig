@@ -32,8 +32,8 @@ fn parserTest() !void {
             return error.Failure;
         } else {
             std.log.warn(
-                \\{s}Case {s} Passed! {s}
-            , .{ shared.ansi.GREEN, case.name, shared.ansi.RESET });
+                \\'{s}' {s}Case Passed!{s}
+            , .{ case.name, shared.ansi.GREEN, shared.ansi.RESET });
         }
     }
 }
@@ -85,44 +85,67 @@ const ParserTestCase = struct {
 
 fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
     return try a.dupe(ParserTestCase, &[_]ParserTestCase{
+        // -----------------------------
+        // IF
+        // -----------------------------
         .{
-            .name = "all statements",
+            .name = "if statement",
             .content =
             \\ ||zz if .something zz||
             \\ {|.|}
             \\ {|.subfield|}
-            \\ ||zz else if .other_thing zz||
-            \\ {|.|}
             \\ ||zz endif zz||
-            \\ ||zz for .iterable json zz||
-            \\ {|.|}
-            \\ ||zz else zz||
-            \\ {|.alternative|}
-            \\ ||zz endfor zz||
             ,
             .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
                 .{
-                    .@"if" = .{ .condition = try ast.ExpressionStatement.create(a, .{ .access = .{
-                        .literal = try a.dupe(u8, ".something"),
-                    } }), .block = .{
-                        .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                            .{
-                                .expression = try ast.ExpressionStatement.create(a, .{
-                                    .access = .{
-                                        .literal = try a.dupe(u8, "."),
-                                    },
-                                }),
-                            },
-                            .{ .expression = try ast.ExpressionStatement.create(a, .{
-                                .access = .{
-                                    .literal = try a.dupe(u8, ".subfield"),
-                                },
-                            }) },
-                        }),
-                    }, .alternative = .{
+                    .@"if" = .{
                         .condition = try ast.ExpressionStatement.create(a, .{
                             .access = .{
-                                .literal = try a.dupe(u8, ".other_thing"),
+                                .literal = try a.dupe(u8, ".something"),
+                            },
+                        }),
+                        .block = .{
+                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                .{
+                                    .expression = try ast.ExpressionStatement.create(a, .{
+                                        .access = .{
+                                            .literal = try a.dupe(u8, "."),
+                                        },
+                                    }),
+                                },
+                                .{
+                                    .expression = try ast.ExpressionStatement.create(a, .{
+                                        .access = .{
+                                            .literal = try a.dupe(u8, ".subfield"),
+                                        },
+                                    }),
+                                },
+                            }),
+                        },
+                        .alternative = null,
+                    },
+                },
+            }),
+        },
+
+        // -----------------------------
+        // IF / ELSE IF
+        // -----------------------------
+        .{
+            .name = "if else-if statement",
+            .content =
+            \\ ||zz if .something zz||
+            \\ {|.|}
+            \\ ||zz else if .other_thing zz||
+            \\ {|.|}
+            \\ ||zz endif zz||
+            ,
+            .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
+                .{
+                    .@"if" = .{
+                        .condition = try ast.ExpressionStatement.create(a, .{
+                            .access = .{
+                                .literal = try a.dupe(u8, ".something"),
                             },
                         }),
                         .block = .{
@@ -136,32 +159,108 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                 },
                             }),
                         },
-                    } },
-                },
-                .{
-                    .@"for" = .{ .access = .{
-                        .literal = try a.dupe(u8, ".iterable"),
-                        .json = true,
-                    }, .block = .{
-                        .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                            .{ .expression = try ast.ExpressionStatement.create(a, .{
+                        .alternative = .{
+                            .condition = try ast.ExpressionStatement.create(a, .{
                                 .access = .{
-                                    .literal = try a.dupe(u8, "."),
+                                    .literal = try a.dupe(u8, ".other_thing"),
                                 },
-                            }) },
-                        }),
-                    }, .alternative = .{
-                        .condition = null,
+                            }),
+                            .block = .{
+                                .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                    .{
+                                        .expression = try ast.ExpressionStatement.create(a, .{
+                                            .access = .{
+                                                .literal = try a.dupe(u8, "."),
+                                            },
+                                        }),
+                                    },
+                                }),
+                            },
+                        },
+                    },
+                },
+            }),
+        },
+
+        // -----------------------------
+        // FOR
+        // -----------------------------
+        .{
+            .name = "for statement",
+            .content =
+            \\ ||zz for .iterable json zz||
+            \\ {|.|}
+            \\ ||zz endfor zz||
+            ,
+            .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
+                .{
+                    .@"for" = .{
+                        .access = .{
+                            .literal = try a.dupe(u8, ".iterable"),
+                            .json = true,
+                        },
                         .block = .{
                             .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                                .{ .expression = try ast.ExpressionStatement.create(a, .{
-                                    .access = .{
-                                        .literal = try a.dupe(u8, ".alternative"),
-                                    },
-                                }) },
+                                .{
+                                    .expression = try ast.ExpressionStatement.create(a, .{
+                                        .access = .{
+                                            .literal = try a.dupe(u8, "."),
+                                        },
+                                    }),
+                                },
                             }),
                         },
-                    } },
+                        .alternative = null,
+                    },
+                },
+            }),
+        },
+
+        // -----------------------------
+        // FOR / ELSE
+        // -----------------------------
+        .{
+            .name = "for else statement",
+            .content =
+            \\ ||zz for .iterable json zz||
+            \\ {|.|}
+            \\ ||zz else zz||
+            \\ {|.alternative|}
+            \\ ||zz endfor zz||
+            ,
+            .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
+                .{
+                    .@"for" = .{
+                        .access = .{
+                            .literal = try a.dupe(u8, ".iterable"),
+                            .json = true,
+                        },
+                        .block = .{
+                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                .{
+                                    .expression = try ast.ExpressionStatement.create(a, .{
+                                        .access = .{
+                                            .literal = try a.dupe(u8, "."),
+                                        },
+                                    }),
+                                },
+                            }),
+                        },
+                        .alternative = .{
+                            .condition = null,
+                            .block = .{
+                                .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                    .{
+                                        .expression = try ast.ExpressionStatement.create(a, .{
+                                            .access = .{
+                                                .literal = try a.dupe(u8, ".alternative"),
+                                            },
+                                        }),
+                                    },
+                                }),
+                            },
+                        },
+                    },
                 },
             }),
         },
