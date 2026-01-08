@@ -93,12 +93,10 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             .name = "if statement with literals",
             .content =
             \\ ||zz if .something zz||
-            // \\ <div>
+            \\ <div>
             \\ {|.|}
-            // \\ </div>
-            // \\ <div attribute="
-            \\ {|.subfield|}
-            // " </div>
+            \\ </div>
+            \\ <div attribute="{|.subfield|}" </div>
             \\ ||zz endif zz||
             ,
             .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
@@ -111,9 +109,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                         }),
                         .block = .{
                             .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                                // .{
-                                //     .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " <div>\n") },
-                                // },
+                                .{
+                                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " <div>\n ") },
+                                },
                                 .{
                                     .expression = try ast.ExpressionStatement.create(a, .{
                                         .access = .{
@@ -121,9 +119,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                         },
                                     }),
                                 },
-                                // .{
-                                //     .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " </div>\n <div attribute=\"") },
-                                // },
+                                .{
+                                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " </div>\n <div attribute=\"") },
+                                },
                                 .{
                                     .expression = try ast.ExpressionStatement.create(a, .{
                                         .access = .{
@@ -131,9 +129,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                         },
                                     }),
                                 },
-                                // .{
-                                //     .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\" </div>\n") },
-                                // },
+                                .{
+                                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\" </div>\n ") },
+                                },
                             }),
                         },
                         .alternatives = null,
@@ -195,10 +193,13 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
         },
 
         .{
-            .name = "for statement",
+            .name = "for statement with literals",
             .content =
             \\ ||zz for .iterable json zz||
+            \\ <div>
             \\ {|.|}
+            \\ </div>
+            \\ <div attribute="{|.subfield|}" </div>
             \\ ||zz endfor zz||
             ,
             .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
@@ -211,11 +212,27 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                         .block = .{
                             .body = try a.dupe(ast.Statement, &[_]ast.Statement{
                                 .{
+                                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " <div>\n ") },
+                                },
+                                .{
                                     .expression = try ast.ExpressionStatement.create(a, .{
                                         .access = .{
                                             .literal = try a.dupe(u8, "."),
                                         },
                                     }),
+                                },
+                                .{
+                                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " </div>\n <div attribute=\"") },
+                                },
+                                .{
+                                    .expression = try ast.ExpressionStatement.create(a, .{
+                                        .access = .{
+                                            .literal = try a.dupe(u8, ".subfield"),
+                                        },
+                                    }),
+                                },
+                                .{
+                                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\" </div>\n ") },
                                 },
                             }),
                         },

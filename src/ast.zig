@@ -71,8 +71,9 @@ pub const LiteralStatement = struct {
     }
     pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print(
-            \\ Literal Statement:
-            \\ '{s}'
+            \\
+            \\'{s}'
+            \\
         , .{self.content});
     }
 };

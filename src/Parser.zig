@@ -167,14 +167,19 @@ fn parseStatement(self: *Self) ParseError!?ast.Statement {
 
 fn parseLiteralStatement(self: *Self) ParseError!?ast.LiteralStatement {
     var writer: std.Io.Writer.Allocating = .init(self.arena.allocator());
-    while (true) {
-        switch (self.current_token.typ) {
-            .literal, .newline, .space, .tab => {
-                try writer.writer.writeAll(self.current_token.literal);
-                self.prev_token = self.current_token;
-            },
-            else => break,
+    if (!try self.expectCurrent(.literal)) return null;
+
+    if (self.prev_token) |p| {
+        if (p.typ.isWhitespace()) {
+            try writer.writer.writeAll(p.literal);
         }
+    }
+
+    defer writer.deinit();
+    while (true) {
+        try writer.writer.writeAll(self.current_token.literal);
+        if (!self.peek_token.typ.isWhitespace() and self.peek_token.typ != .literal) break;
+        self.progressToken();
     }
 
     return ast.LiteralStatement{
