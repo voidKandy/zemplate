@@ -13,6 +13,7 @@ pub const Statement = union(enum) {
     @"for": ForStatement,
     @"if": IfStatement,
     expression: ExpressionStatement,
+    literal: LiteralStatement,
 
     pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{s} statement:\n", .{@tagName(self)});
@@ -21,6 +22,7 @@ pub const Statement = union(enum) {
             .@"for" => |s| s.format(writer),
             .block => |s| s.format(writer),
             .expression => |s| s.format(writer),
+            .literal => |s| s.format(writer),
         };
     }
 
@@ -50,8 +52,28 @@ pub const Statement = union(enum) {
                 const oth = other.expression;
                 return this.eql(oth);
             },
+            .literal => {
+                if (other != .literal) return false;
+                const this = self.literal;
+                const oth = other.literal;
+                return this.eql(oth);
+            },
         }
         return true;
+    }
+};
+
+pub const LiteralStatement = struct {
+    content: []u8,
+
+    pub fn eql(self: @This(), other: @This()) bool {
+        return std.mem.eql(u8, self.content, other.content);
+    }
+    pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print(
+            \\ Literal Statement:
+            \\ '{s}'
+        , .{self.content});
     }
 };
 

@@ -4,6 +4,7 @@ pub const ast = @import("ast.zig");
 pub const Template = render.Template;
 pub const iterate = @import("iterate.zig");
 pub const conditional = @import("conditional.zig");
+pub const render_context = @import("render_context.zig");
 pub const Lexer = @import("Lexer.zig");
 pub const Parser = @import("Parser.zig");
 pub const util = @import("util.zig");

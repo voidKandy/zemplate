@@ -20,12 +20,14 @@ fn parserTest() !void {
     defer arena.deinit();
 
     const cases = try initCases(arena.allocator());
+    var failed = false;
 
     for (cases) |case| {
         if (case.runTest(arena.allocator()) catch |e| {
             std.log.err(
                 \\ {s}{s} Test Exited Early: {s}{s}
             , .{ shared.ansi.YELLOW, case.name, @errorName(e), shared.ansi.RESET });
+            failed = true;
             continue;
         }) |failure| {
             std.log.err(
@@ -34,12 +36,15 @@ fn parserTest() !void {
                 \\ {f}
                 \\
             , .{ shared.ansi.YELLOW, case.name, shared.ansi.RESET, failure });
+            failed = true;
         } else {
             std.log.warn(
                 \\{s}'{s}' Case Passed!{s}
             , .{ shared.ansi.GREEN, case.name, shared.ansi.RESET });
         }
     }
+
+    if (failed) return error.Failed;
 }
 
 const ParserTestCase = struct {
@@ -85,11 +90,15 @@ const ParserTestCase = struct {
 fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
     return try a.dupe(ParserTestCase, &[_]ParserTestCase{
         .{
-            .name = "if statement",
+            .name = "if statement with literals",
             .content =
             \\ ||zz if .something zz||
+            // \\ <div>
             \\ {|.|}
+            // \\ </div>
+            // \\ <div attribute="
             \\ {|.subfield|}
+            // " </div>
             \\ ||zz endif zz||
             ,
             .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
@@ -102,6 +111,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                         }),
                         .block = .{
                             .body = try a.dupe(ast.Statement, &[_]ast.Statement{
+                                // .{
+                                //     .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " <div>\n") },
+                                // },
                                 .{
                                     .expression = try ast.ExpressionStatement.create(a, .{
                                         .access = .{
@@ -109,6 +121,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                         },
                                     }),
                                 },
+                                // .{
+                                //     .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " </div>\n <div attribute=\"") },
+                                // },
                                 .{
                                     .expression = try ast.ExpressionStatement.create(a, .{
                                         .access = .{
@@ -116,6 +131,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                         },
                                     }),
                                 },
+                                // .{
+                                //     .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\" </div>\n") },
+                                // },
                             }),
                         },
                         .alternatives = null,

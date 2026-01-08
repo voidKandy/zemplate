@@ -27,7 +27,7 @@ pub inline fn UnwrapIterableChild(comptime T: type) ?type {
 /// returns `@typeInfo(Parent)`, the `type` of the field that matches `field_name` and the iterable child `type` of the field's type
 ///
 /// For example, if the field's type is `[]const u8` *ItemType* will be `u8`, *FieldType* will be `[]const u8`
-inline fn validateParentAndFieldName(comptime Parent: type, comptime field_name: []const u8) error{ NotIterable, ParentNotStruct, InvalidFieldName }!struct {
+pub inline fn validateParentAndFieldName(comptime Parent: type, comptime field_name: []const u8) error{ NotIterable, ParentNotStruct, InvalidFieldName }!struct {
     type_info: Type,
     ItemType: type,
     FieldType: type,
@@ -60,7 +60,7 @@ inline fn validateParentAndFieldName(comptime Parent: type, comptime field_name:
     };
 }
 
-pub fn StructFieldIterator(comptime Parent: type, comptime field_name: []const u8) type {
+pub fn StructFieldIterator(comptime Parent: type, field_name: []const u8) type {
     const info = validateParentAndFieldName(Parent, field_name) catch @compileError("Cannot make struct field iterator from " ++ @typeName(Parent));
     const FieldType = info.FieldType;
     const ItemType = info.ItemType;

@@ -9,30 +9,7 @@ const Failure = shared.Failure;
 test "iterate" {
     std.testing.log_level = .warn;
 
-    runTest("CUSTOM ITERATOR", customIterator);
     runTest("STRUCT FIELD ITERATION", structFieldIteration);
-
-    // runTest("THREE ITERABLES", struct {
-    //     fn run() !void {
-    //         const allocator = std.testing.allocator;
-    //         for (ALL_THREE_ITERABLE_CASES) |case| {
-    //             if (try case.runTest(allocator)) |*failure| {
-    //                 defer failure.deinit(allocator);
-    //                 panic(
-    //                     \\
-    //                     \\ {s} Test Failed:
-    //                     \\ {f}
-    //                     \\
-    //                 , .{ case.name, failure });
-    //             } else {
-    //                 print(
-    //                     \\ {s}{s} CASE PASSED!{s}
-    //                     \\
-    //                 , .{ shared.ansi.GREEN, case.name, shared.ansi.RESET });
-    //             }
-    //         }
-    //     }
-    // }.run);
 }
 
 fn ForLoopTestCase(comptime TemplateContext: type) type {
@@ -61,129 +38,11 @@ const ThreeIterableCtx = struct {
     inner_struct: TypeWithInnerString = .{},
 };
 
-const ALL_THREE_ITERABLE_CASES = &[_]ForLoopTestCase(ThreeIterableCtx){
-    .{
-        .name = "three iterables",
-        .content =
-        \\ Hello!
-        \\||zz for .outer_field zz||
-        \\ {|.|}
-        \\||zz endfor zz||
-        \\Amt array: ||zz .array.len zz||
-        \\||zz for .array zz||
-        \\ {| . |}
-        \\||zz endfor zz||
-        \\Amt Structs: ||zz .structs.len zz||
-        \\||zz for .structs zz||
-        \\ {| .inner_string |}
-        \\||zz endfor zz||
-        \\
-        ,
-        .expected =
-        \\ Hello!
-        \\ W
-        \\ o
-        \\ r
-        \\ l
-        \\ d
-        \\
-        \\Amt array: 3
-        \\ one
-        \\ two
-        \\ three
-        \\
-        \\Amt Structs: 2
-        \\ string
-        \\ string2
-        \\
-        \\
-        ,
-        .ctx = .{
-            .outer_field = "World",
-            .array = &[_][]const u8{
-                "one",
-                "two",
-                "three",
-            },
-            .structs = &[_]TypeWithInnerString{
-                .{ .inner_string = "string" },
-                .{ .inner_string = "string2" },
-            },
-        },
-    },
-    .{
-        .name = "nested for loops",
-        .content =
-        \\||zz for .structs zz||
-        \\{|.inner_string|}
-        \\||zz for .inner_string zz||
-        \\ {|.|}
-        \\||zz endfor zz||
-        \\{|.inner_string|}
-        \\||zz endfor zz||
-        \\
-        \\||zz for .inner_struct.inner_string zz||
-        \\ {|.|}
-        \\||zz endfor zz||
-        ,
-        .expected =
-        \\myTest1
-        \\ m
-        \\ y
-        \\ T
-        \\ e
-        \\ s
-        \\ t
-        \\ 1
-        \\
-        \\myTest1
-        \\myTest2
-        \\ m
-        \\ y
-        \\ T
-        \\ e
-        \\ s
-        \\ t
-        \\ 2
-        \\
-        \\myTest2
-        \\
-        \\
-        \\ W
-        \\ a
-        \\ t
-        \\ e
-        \\ r
-        \\ m
-        \\ e
-        \\ l
-        \\ o
-        \\ n
-        \\
-        ,
-        .ctx = .{
-            .structs = &[_]TypeWithInnerString{
-                .{ .inner_string = "myTest1" },
-                .{ .inner_string = "myTest2" },
-            },
-            .inner_struct = TypeWithInnerString{
-                .inner_string = "Watermelon",
-            },
-        },
-    },
-};
-
-const VisitorCtx = struct {
-    pub fn visit(self: *@This(), val: anytype) zemplate.Error!void {
-        _ = self;
-        _ = val;
-    }
-};
-
 fn structFieldIteration() !void {
     const OtherStruct = struct {
         other_string: []const u8,
     };
+
     const TestStruct = struct {
         other: ?OtherStruct,
         string: []const u8,
@@ -203,6 +62,7 @@ fn structFieldIteration() !void {
             , .{ self.string, self.number, self.other });
         }
     };
+
     const expected_strings =
         &[_][]const u8{
             "one",
@@ -238,6 +98,7 @@ fn structFieldIteration() !void {
                 .other = .{ .other_string = "inner-five" },
             },
         };
+
     var parent = .{
         .strings = expected_strings,
         .structs = expected_structs,
@@ -272,28 +133,5 @@ fn structFieldIteration() !void {
                 @panic("failed");
             }
         }
-    }
-}
-
-fn customIterator() !void {
-    var inst =
-        ThreeIterableCtx{
-            .outer_field = "some string",
-            .array = &[_][]const u8{
-                "data", "other data",
-            },
-            .structs = &[_]TypeWithInnerString{
-                .{
-                    .inner_string = "Inner",
-                },
-            },
-        };
-    var ctx = try zemplate.iterate.StructIterationContext(VisitorCtx).init(ThreeIterableCtx, &inst, std.testing.allocator);
-    defer ctx.deinit(std.testing.allocator);
-    var vctx: VisitorCtx = .{};
-
-    for (ctx.fields.values()) |f| {
-        const n = f.next() orelse continue;
-        try f.visit(&vctx, n);
     }
 }

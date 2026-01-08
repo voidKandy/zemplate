@@ -113,12 +113,23 @@ const IterationScope = struct {
                         // in order to accomodate for the fact that @TypeOf(val) might be a pointer
                         // im abstracting this function to make the switch statement below less ugly
                         const writeStructFieldLambda = struct {
-                            fn write(s: Type.Struct, fieldname_check: []const u8, v: anytype, writer: *std.Io.Writer, ser_opts: *SerializeOptions) anyerror!void {
+                            fn write(
+                                s: Type.Struct,
+                                fieldname_check: []const u8,
+                                v: anytype,
+                                writer: *std.Io.Writer,
+                                print_json: bool,
+                            ) anyerror!void {
                                 // very cringe that i have to do this
                                 inline for (s.fields) |f| {
                                     if (std.mem.eql(u8, f.name, fieldname_check)) {
-                                        ser_opts.field_name = fieldname_check;
-                                        util.writeField(v, writer, ser_opts.*) catch |e| {
+                                        util.writeField(
+                                            v,
+                                            writer,
+                                            fieldname_check,
+                                            self.json_opts,
+                                            print_json,
+                                        ) catch |e| {
                                             visit_log.err(
                                                 \\ Failed to writefield: {any}
                                             , .{e});
@@ -132,14 +143,24 @@ const IterationScope = struct {
                             if (fieldname_to_check) |name| {
                                 switch (@typeInfo(@TypeOf(val))) {
                                     .@"struct" => |st| {
-                                        writeStructFieldLambda(st, name, val, &self.writer.writer, opts) catch return error.CannotSerialize;
+                                        writeStructFieldLambda(
+                                            st,
+                                            name,
+                                            val,
+                                            &self.writer.writer,
+                                        ) catch return error.CannotSerialize;
                                         break :write_field;
                                     },
                                     .pointer => |ptr| {
                                         if (ptr.size == .one) {
                                             switch (@typeInfo(ptr.child)) {
                                                 .@"struct" => |st| {
-                                                    writeStructFieldLambda(st, name, val.*, &self.writer.writer, opts) catch return error.CannotSerialize;
+                                                    writeStructFieldLambda(
+                                                        st,
+                                                        name,
+                                                        val.*,
+                                                        &self.writer.writer,
+                                                    ) catch return error.CannotSerialize;
                                                     break :write_field;
                                                 },
                                                 else => {},

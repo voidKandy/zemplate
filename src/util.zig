@@ -3,13 +3,7 @@ const root = @import("root.zig");
 const ArrayList = std.ArrayList;
 const log = std.log.scoped(.util);
 const Error = @import("root.zig").Error;
-
-pub const SerializeOptions = struct {
-    field_name: []const u8,
-    json: ?*const std.json.Stringify.Options = null,
-    /// in case you want to access an nth item of an array field
-    index: ?usize = null,
-};
+const JsonOptions = std.json.Stringify.Options;
 
 /// using std.mem.eql on two comptime strings can sometimes return false positives
 pub inline fn sliceEqualComptime(a: []const u8, b: []const u8) bool {
@@ -20,12 +14,18 @@ pub inline fn sliceEqualComptime(a: []const u8, b: []const u8) bool {
     return true;
 }
 
-pub inline fn writeType(T: type, inst: anytype, writer: *std.Io.Writer, opts: SerializeOptions) Error!void {
+pub inline fn writeType(
+    T: type,
+    inst: anytype,
+    writer: *std.Io.Writer,
+    json_opts: JsonOptions,
+    print_json: bool,
+) Error!void {
     if (@TypeOf(inst) != T) @panic(@typeName(T) ++ " =! " ++ @typeName(@TypeOf(inst)));
     log.debug("Trying writetype: {s}", .{@typeName(T)});
 
-    if (opts.json) |o|
-        return try std.json.Stringify.value(inst, o.*, writer);
+    if (print_json)
+        return try std.json.Stringify.value(inst, json_opts, writer);
 
     const info = @typeInfo(T);
     switch (info) {
@@ -40,22 +40,12 @@ pub inline fn writeType(T: type, inst: anytype, writer: *std.Io.Writer, opts: Se
                     else
                         inst[0..];
 
-                if (opts.index) |i| {
-                    log.debug("Byte: {c}", .{bytes[i]});
-                    try writer.writeByte(bytes[i]);
-                } else {
-                    log.debug("Bytes: {s}", .{bytes});
-                    try writer.writeAll(bytes);
-                }
+                log.debug("Bytes: {s}", .{bytes});
+                try writer.writeAll(bytes);
                 return;
             }
 
             log.debug("array child is not u8, got {s}", .{@typeName(a.child)});
-            if (opts.index) |i| {
-                var new_opts = opts;
-                new_opts.index = null;
-                try writeType(a.child, inst[i], writer, new_opts);
-            }
         },
         .pointer => |ptr| {
             log.debug(
@@ -65,34 +55,26 @@ pub inline fn writeType(T: type, inst: anytype, writer: *std.Io.Writer, opts: Se
                 log.debug("size: {any}", .{ptr.size});
                 switch (ptr.size) {
                     .slice => {
-                        if (opts.index) |i| {
-                            log.debug("Byte: {c}", .{inst[i]});
-                            try writer.writeByte(inst[i]);
-                        } else {
-                            log.debug("Bytes: {s}", .{inst});
-                            try writer.writeAll(inst);
-                        }
+                        log.debug("Bytes: {s}", .{inst});
+                        try writer.writeAll(inst);
 
                         return;
                     },
-                    .one => return try writeType(ptr.child, inst.*, writer, opts),
+                    .one => return try writeType(ptr.child, inst.*, writer, json_opts, print_json),
                     else => return error.InvalidPointerType,
                 }
             }
 
             log.debug("pointer child is not u8, got {s}", .{@typeName(ptr.child)});
 
-            if (ptr.size == .one) return try writeType(ptr.child, inst.*, writer, opts);
+            if (ptr.size == .one) return try writeType(ptr.child, inst.*, writer, json_opts, print_json);
         },
         .@"struct" => {
             log.debug(
                 \\ struct type
             , .{});
             if (T == ArrayList(u8)) {
-                return try if (opts.index) |i|
-                    writer.writeByte(inst.items[i])
-                else
-                    writer.writeAll(inst.items);
+                try writer.writeAll(inst.items);
             } else {
                 log.warn("No branch for handling {s}", .{@typeName(T)});
             }
@@ -112,35 +94,63 @@ pub inline fn writeType(T: type, inst: anytype, writer: *std.Io.Writer, opts: Se
 pub fn writeField(
     parent_struct: anytype,
     writer: *std.Io.Writer,
-    opts: SerializeOptions,
+    field_name: []const u8,
+    json_opts: std.json.Stringify.Options,
+    print_json: bool,
 ) Error!void {
     log.debug(
         \\ Attempting writeField on {s}
         \\ Fieldname: {s}
-    , .{ @typeName(@TypeOf(parent_struct)), opts.field_name });
+    , .{ @typeName(@TypeOf(parent_struct)), field_name });
     const info =
         @typeInfo(@TypeOf(parent_struct));
 
     switch (info) {
         .@"struct" => |st| {
-            return try writeStructField(parent_struct, st, writer, opts);
+            return try writeStructField(
+                parent_struct,
+                st,
+                writer,
+                field_name,
+                json_opts,
+                print_json,
+            );
         },
         .pointer => |ptr| {
             switch (@typeInfo(ptr.child)) {
                 .@"struct" => |st| {
                     switch (ptr.size) {
-                        .one => return try writeStructField(parent_struct.*, st, writer, opts),
+                        .one => return try writeStructField(
+                            parent_struct.*,
+                            st,
+                            writer,
+                            field_name,
+                            json_opts,
+                            print_json,
+                        ),
                         else => log.debug("child type is a struct but did not expect many item pointer: {any}", .{ptr.size}),
                     }
                 },
                 .array => |_| {
-                    return try writeType(ptr.child, parent_struct.*, writer, opts);
+                    return try writeType(
+                        ptr.child,
+                        parent_struct.*,
+                        writer,
+                        json_opts,
+                        print_json,
+                    );
                 },
                 else => log.debug("Parent type is not a pointer to struct, got: {any} ", .{@typeInfo(ptr.child)}),
             }
         },
         .array => |_| {
-            return try writeType(@TypeOf(parent_struct), parent_struct, writer, opts);
+            return try writeType(
+                @TypeOf(parent_struct),
+                parent_struct,
+                writer,
+                json_opts,
+                print_json,
+            );
         },
         else => log.debug("Parent type is not a struct, got: {any} ", .{info}),
     }
@@ -148,7 +158,14 @@ pub fn writeField(
     return error.CannotSerialize;
 }
 
-inline fn writeStructField(parent: anytype, st: std.builtin.Type.Struct, writer: *std.Io.Writer, opts: SerializeOptions) Error!void {
+inline fn writeStructField(
+    parent: anytype,
+    st: std.builtin.Type.Struct,
+    writer: *std.Io.Writer,
+    field_name: []const u8,
+    json_opts: JsonOptions,
+    print_json: bool,
+) Error!void {
     switch (@typeInfo(@TypeOf(parent))) {
         .@"struct" => {},
         else => @compileError(
@@ -161,14 +178,13 @@ inline fn writeStructField(parent: anytype, st: std.builtin.Type.Struct, writer:
         \\ Trying to write struct field
         \\ Struct: {s}
         \\ Field Name: {s}
-    , .{ @typeName(@TypeOf(parent)), opts.field_name });
+    , .{ @typeName(@TypeOf(parent)), field_name });
 
-    var field_name = opts.field_name;
     var nested_field: ?[]const u8 = null;
-    if (std.mem.lastIndexOfScalar(u8, opts.field_name, '.')) |i| {
+    if (std.mem.lastIndexOfScalar(u8, field_name, '.')) |i| {
         log.debug(
             \\ Detecting nested field access: {s}
-        , .{opts.field_name});
+        , .{field_name});
         nested_field = field_name[i + 1 ..];
         field_name = field_name[0..i];
     }
@@ -177,16 +193,21 @@ inline fn writeStructField(parent: anytype, st: std.builtin.Type.Struct, writer:
         if (std.mem.eql(u8, f.name, field_name)) {
             const field = @field(parent, f.name);
             const Ft = @TypeOf(field);
-            if (nested_field) |nested| {
+            if (nested_field) |nested_field_name| {
                 switch (@typeInfo(Ft)) {
                     .@"struct" => |nested_st| {
                         inline for (nested_st.fields) |nested_f| {
-                            if (std.mem.eql(u8, nested_f.name, nested)) {
+                            if (std.mem.eql(u8, nested_f.name, nested_field_name)) {
                                 const nfield = @field(field, nested_f.name);
                                 const Nft = @TypeOf(nfield);
-                                var nested_opts = opts;
-                                nested_opts.field_name = nested;
-                                return writeType(Nft, nfield, writer, nested_opts) catch |e| {
+                                return writeType(
+                                    Nft,
+                                    nfield,
+                                    writer,
+                                    nested_field_name,
+                                    json_opts,
+                                    print_json,
+                                ) catch |e| {
                                     log.err(
                                         \\ Field Type: {s}
                                         \\ Error: {any}
@@ -197,8 +218,15 @@ inline fn writeStructField(parent: anytype, st: std.builtin.Type.Struct, writer:
                         }
                     },
                     .array => |arr| {
-                        if (std.mem.eql(u8, nested, "len")) {
-                            return writeType(usize, arr.len, writer, opts) catch |e|
+                        if (std.mem.eql(u8, nested_field_name, "len")) {
+                            return writeType(
+                                usize,
+                                arr.len,
+                                writer,
+                                nested_field_name,
+                                json_opts,
+                                print_json,
+                            ) catch |e|
                                 {
                                     log.err(
                                         \\ Field Type: {s}
@@ -209,8 +237,15 @@ inline fn writeStructField(parent: anytype, st: std.builtin.Type.Struct, writer:
                         }
                     },
                     .pointer => |ptr| {
-                        if (ptr.size == .slice and std.mem.eql(u8, nested, "len")) {
-                            return writeType(usize, field.len, writer, opts) catch |e|
+                        if (ptr.size == .slice and std.mem.eql(u8, nested_field_name, "len")) {
+                            return writeType(
+                                usize,
+                                field.len,
+                                writer,
+                                nested_field_name,
+                                json_opts,
+                                print_json,
+                            ) catch |e|
                                 {
                                     log.err(
                                         \\ Field Type: {s}
@@ -226,7 +261,14 @@ inline fn writeStructField(parent: anytype, st: std.builtin.Type.Struct, writer:
                 log.err("Nested field access only supported on structs, slices and arrays!", .{});
                 return error.SyntaxInvalid;
             } else {
-                writeType(Ft, field, writer, opts) catch |e| {
+                writeType(
+                    Ft,
+                    field,
+                    writer,
+                    field_name,
+                    json_opts,
+                    print_json,
+                ) catch |e| {
                     log.err(
                         \\ Field Type: {s}
                         \\ Error: {any}
