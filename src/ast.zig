@@ -325,7 +325,7 @@ pub const ComparisonExpression = struct {
 };
 
 pub const LiteralExpression = union(enum) {
-    integer: u32,
+    integer: i32,
     string: []const u8,
     boolean: bool,
 
@@ -365,7 +365,8 @@ pub const LiteralExpression = union(enum) {
     }
 
     pub fn tryFromStringLiteral(literal: []const u8) ?@This() {
-        const int = std.fmt.parseInt(u32, literal, 10) catch |e| {
+        const neg = literal[0] == '-';
+        const int = std.fmt.parseInt(u32, if (neg) literal[1..] else literal, 10) catch |e| {
             if (e == error.Overflow) @panic("Overflow when parsing integer!");
 
             if (std.mem.eql(u8, "false", literal) or std.mem.eql(u8, "true", literal)) {
@@ -379,6 +380,6 @@ pub const LiteralExpression = union(enum) {
             return null;
         };
 
-        return .{ .integer = int };
+        return .{ .integer = if (neg) int * -1 else int };
     }
 };
