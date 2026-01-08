@@ -364,18 +364,19 @@ pub const LiteralExpression = union(enum) {
         try writer.writeByte('\n');
     }
 
-    pub fn tryFromStringLiteral(literal: []const u8) ?@This() {
+    pub fn tryFromLiteral(literal: []const u8) ?@This() {
         const neg = literal[0] == '-';
-        const int = std.fmt.parseInt(u32, if (neg) literal[1..] else literal, 10) catch |e| {
+        const int = std.fmt.parseInt(i32, if (neg) literal[1..] else literal, 10) catch |e| {
             if (e == error.Overflow) @panic("Overflow when parsing integer!");
 
             if (std.mem.eql(u8, "false", literal) or std.mem.eql(u8, "true", literal)) {
                 return .{ .boolean = std.mem.eql(u8, "true", literal) };
             }
 
-            if (literal[0] == '\'' and literal[literal.len - 1] == '\'') {
-                return .{ .string = literal[1 .. literal.len - 1] };
-            }
+            for ("\'\"") |string_sep|
+                if (literal[0] == string_sep and
+                    literal[literal.len - 1] == string_sep)
+                    return .{ .string = literal[1 .. literal.len - 1] };
 
             return null;
         };

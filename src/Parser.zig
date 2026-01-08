@@ -390,10 +390,10 @@ fn parseExpressionStatement(self: *Self) ParseError!?ast.ExpressionStatement {
         switch (self.current_token.typ) {
             .literal => {
                 const literal_expr =
-                    ast.LiteralExpression.tryFromStringLiteral(self.current_token.literal) orelse {
+                    ast.LiteralExpression.tryFromLiteral(self.current_token.literal) orelse {
                         try self.emitError(
                             \\ Failed to parse literal expression from string literal: '{s}'
-                        , .{self.peek_token.literal});
+                        , .{self.current_token.literal});
                         return null;
                     };
 

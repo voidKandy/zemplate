@@ -1,10 +1,13 @@
 const std = @import("std");
 const zemplate = @import("zemplate");
 const ast = zemplate.ast;
+const Lexer = zemplate.Lexer;
+const Parser = zemplate.Parser;
 const runTest = @import("shared.zig").runTest;
 
 test "rendering" {
     runTest("Iteration", iterationTest);
+    // runTest("some", iterationTest);
 }
 
 const allocator = std.testing.allocator;
@@ -22,21 +25,15 @@ fn iterationTest() !void {
         arena.deinit();
         w.deinit();
     }
-    const stmt =
-        ast.Statement{ .@"for" = ast.ForStatement{
-            .access = ast.AccessExpression{ .literal = ".string" },
-            .alternatives = null,
-            .block = .{
-                .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                    .{
-                        .expression = try ast.ExpressionStatement.create(a, .{
-                            .access = .{ .literal = "." },
-                        }),
-                    },
-                }),
-            },
-        } };
-    zemplate.render_context.renderStatement(
+    var lexer = Lexer.init(
+        \\ ||zz for .string zz||
+        \\ {|.|}
+        \\ ||zz endfor zz||
+    );
+    var parser = try Parser.init(a, &lexer, null);
+    const program = try parser.parseProgram();
+
+    try zemplate.render_context.renderStatement(
         a,
         &w.writer,
         Test{
@@ -45,9 +42,8 @@ fn iterationTest() !void {
                 .string = "inner string",
             },
         },
-        stmt,
+        program.statements.items[0],
         .{},
     );
-
     std.debug.print("{s}", .{w.written()});
 }

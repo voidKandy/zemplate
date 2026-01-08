@@ -106,8 +106,8 @@ pub fn renderStatement(
     // _ = val;
     switch (statement) {
         .@"for" => |s| {
-            for (s.block.body) |st| {
-                try renderStatement(a, writer, val, st, json_opts);
+            for (s.block.body) |b| {
+                try renderStatement(a, writer, val, b, json_opts);
             }
             if (s.alternatives) |alts| {
                 for (alts) |alt| {

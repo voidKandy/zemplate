@@ -294,9 +294,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             .content =
             \\ ||zz if .something > 20 zz||
             \\ ||zz endif zz||
-            \\ ||zz if .something == 50 zz||
+            \\ ||zz if .something == -50 zz||
             \\ ||zz endif zz||
-            \\ ||zz if .something == .other_thing zz||
+            \\ ||zz if .something == "Hello" zz||
             \\ ||zz endif zz||
             ,
             .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
@@ -332,7 +332,7 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                     },
                                 }),
                                 .right = try ast.ExpressionStatement.create(a, .{
-                                    .literal = .{ .integer = 50 },
+                                    .literal = .{ .integer = -50 },
                                 }),
                             },
                         }),
@@ -353,8 +353,8 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                     },
                                 }),
                                 .right = try ast.ExpressionStatement.create(a, .{
-                                    .access = .{
-                                        .literal = try a.dupe(u8, ".other_thing"),
+                                    .literal = .{
+                                        .string = "Hello",
                                     },
                                 }),
                             },

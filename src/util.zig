@@ -180,102 +180,102 @@ inline fn writeStructField(
         \\ Field Name: {s}
     , .{ @typeName(@TypeOf(parent)), field_name });
 
-    var nested_field: ?[]const u8 = null;
-    if (std.mem.lastIndexOfScalar(u8, field_name, '.')) |i| {
-        log.debug(
-            \\ Detecting nested field access: {s}
-        , .{field_name});
-        nested_field = field_name[i + 1 ..];
-        field_name = field_name[0..i];
-    }
+    //TODO
+    // var nested_field: ?[]const u8 = null;
+    // if (std.mem.lastIndexOfScalar(u8, field_name, '.')) |i| {
+    //     log.debug(
+    //         \\ Detecting nested field access: {s}
+    //     , .{field_name});
+    //     nested_field = field_name[i + 1 ..];
+    //     field_name = field_name[0..i];
+    // }
 
     inline for (st.fields) |f| {
         if (std.mem.eql(u8, f.name, field_name)) {
             const field = @field(parent, f.name);
             const Ft = @TypeOf(field);
-            if (nested_field) |nested_field_name| {
-                switch (@typeInfo(Ft)) {
-                    .@"struct" => |nested_st| {
-                        inline for (nested_st.fields) |nested_f| {
-                            if (std.mem.eql(u8, nested_f.name, nested_field_name)) {
-                                const nfield = @field(field, nested_f.name);
-                                const Nft = @TypeOf(nfield);
-                                return writeType(
-                                    Nft,
-                                    nfield,
-                                    writer,
-                                    nested_field_name,
-                                    json_opts,
-                                    print_json,
-                                ) catch |e| {
-                                    log.err(
-                                        \\ Field Type: {s}
-                                        \\ Error: {any}
-                                    , .{ @typeName(Ft), e });
-                                    return e;
-                                };
-                            }
-                        }
-                    },
-                    .array => |arr| {
-                        if (std.mem.eql(u8, nested_field_name, "len")) {
-                            return writeType(
-                                usize,
-                                arr.len,
-                                writer,
-                                nested_field_name,
-                                json_opts,
-                                print_json,
-                            ) catch |e|
-                                {
-                                    log.err(
-                                        \\ Field Type: {s}
-                                        \\ Error: {any}
-                                    , .{ @typeName(Ft), e });
-                                    return e;
-                                };
-                        }
-                    },
-                    .pointer => |ptr| {
-                        if (ptr.size == .slice and std.mem.eql(u8, nested_field_name, "len")) {
-                            return writeType(
-                                usize,
-                                field.len,
-                                writer,
-                                nested_field_name,
-                                json_opts,
-                                print_json,
-                            ) catch |e|
-                                {
-                                    log.err(
-                                        \\ Field Type: {s}
-                                        \\ Error: {any}
-                                    , .{ @typeName(Ft), e });
-                                    return e;
-                                };
-                        }
-                    },
-                    else => {},
-                }
+            // if (nested_field) |nested_field_name| {
+            // } else {
+            writeType(
+                Ft,
+                field,
+                writer,
+                json_opts,
+                print_json,
+            ) catch |e| {
+                log.err(
+                    \\ Field Type: {s}
+                    \\ Error: {any}
+                , .{ @typeName(Ft), e });
+                return e;
+            };
+            //     switch (@typeInfo(Ft)) {
+            //         .@"struct" => |nested_st| {
+            //             inline for (nested_st.fields) |nested_f| {
+            //                 if (std.mem.eql(u8, nested_f.name, nested_field_name)) {
+            //                     const nfield = @field(field, nested_f.name);
+            //                     const Nft = @TypeOf(nfield);
+            //                     return writeType(
+            //                         Nft,
+            //                         nfield,
+            //                         writer,
+            //                         nested_field_name,
+            //                         json_opts,
+            //                         print_json,
+            //                     ) catch |e| {
+            //                         log.err(
+            //                             \\ Field Type: {s}
+            //                             \\ Error: {any}
+            //                         , .{ @typeName(Ft), e });
+            //                         return e;
+            //                     };
+            //                 }
+            //             }
+            //         },
+            //         .array => |arr| {
+            //             if (std.mem.eql(u8, nested_field_name, "len")) {
+            //                 return writeType(
+            //                     usize,
+            //                     arr.len,
+            //                     writer,
+            //                     nested_field_name,
+            //                     json_opts,
+            //                     print_json,
+            //                 ) catch |e|
+            //                     {
+            //                         log.err(
+            //                             \\ Field Type: {s}
+            //                             \\ Error: {any}
+            //                         , .{ @typeName(Ft), e });
+            //                         return e;
+            //                     };
+            //             }
+            //         },
+            //         .pointer => |ptr| {
+            //             if (ptr.size == .slice and std.mem.eql(u8, nested_field_name, "len")) {
+            //                 return writeType(
+            //                     usize,
+            //                     field.len,
+            //                     writer,
+            //                     nested_field_name,
+            //                     json_opts,
+            //                     print_json,
+            //                 ) catch |e|
+            //                     {
+            //                         log.err(
+            //                             \\ Field Type: {s}
+            //                             \\ Error: {any}
+            //                         , .{ @typeName(Ft), e });
+            //                         return e;
+            //                     };
+            //             }
+            //         },
+            //         else => {},
+            //     }
 
-                log.err("Nested field access only supported on structs, slices and arrays!", .{});
-                return error.SyntaxInvalid;
-            } else {
-                writeType(
-                    Ft,
-                    field,
-                    writer,
-                    field_name,
-                    json_opts,
-                    print_json,
-                ) catch |e| {
-                    log.err(
-                        \\ Field Type: {s}
-                        \\ Error: {any}
-                    , .{ @typeName(Ft), e });
-                    return e;
-                };
-            }
+            //     log.err("Nested field access only supported on structs, slices and arrays!", .{});
+            //     return error.SyntaxInvalid;
         }
+        // }
     }
 }

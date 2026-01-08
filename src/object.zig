@@ -2,6 +2,18 @@ const std = @import("std");
 const ast = @import("ast.zig");
 const Allocator = std.mem.Allocator;
 
+const Environment = struct {
+    store: std.StringHashMap(Object),
+
+    fn from(a: Allocator, v: anytype) @This() {
+        var map = std.StringHashMap(Object).init(a);
+        inline for (@typeInfo(@TypeOf(v)).@"struct".fields) |f| {
+            const fval = @field(v, f.name);
+            map.put(f.name, fval);
+        }
+    }
+};
+
 const Object = union(enum) {
     string: []const u8,
     integer: i32,
@@ -96,7 +108,9 @@ const Object = union(enum) {
         // evaluate blocks
     }
 
-    fn evalBlockStatement(stmt: ast.BlockStatement) Self {}
+    fn evalBlockStatement(stmt: ast.BlockStatement) Self {
+        _ = stmt;
+    }
 
     fn evalExpressionStatement(stmt: ast.ExpressionStatement) Self {
         switch (stmt) {
