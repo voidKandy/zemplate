@@ -34,7 +34,6 @@ fn iterationTest() !void {
     const program = try parser.parseProgram();
 
     try zemplate.render_context.renderStatement(
-        a,
         &w.writer,
         Test{
             .string = "outer string",
@@ -45,5 +44,8 @@ fn iterationTest() !void {
         program.statements.items[0],
         .{},
     );
-    std.debug.print("{s}", .{w.written()});
+    std.log.err(
+        \\ RENDER
+        \\ {s}
+    , .{w.written()});
 }

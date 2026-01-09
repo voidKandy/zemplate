@@ -95,19 +95,100 @@ fn genericRenderVisit(n: anytype, args: anytype) anyerror!void {
     return;
 }
 
+inline fn Memo(comptime T: type) type {
+    return struct {
+        inline fn accessMapKvs() []const struct { []const u8, Func } {
+            const FIELDS = @typeInfo(T).@"struct".fields;
+
+            const arr: [FIELDS.len]struct { []const u8, Func } = blk: {
+                var tmp: [FIELDS.len]struct { []const u8, Func } = undefined;
+                for (FIELDS, &tmp) |f, *a| {
+                    a.* = .{
+                        f.name,
+                        &struct {
+                            fn call(
+                                w: *std.Io.Writer,
+                                o: *anyopaque,
+                                st: ast.Statement,
+                                json_opts: std.json.Stringify.Options,
+                            ) Error!void {
+                                const val: *T = @ptrCast(@alignCast(o));
+                                const fld = @field(val, f.name);
+                                try renderStatement(w, fld, st, json_opts);
+                            }
+                        }.call,
+                    };
+                }
+                break :blk tmp;
+            };
+
+            return &arr;
+        }
+
+        access_map: std.StaticStringMap(Func) = .initComptime(accessMapKvs()),
+
+        const Func =
+            *const fn (
+                *std.Io.Writer,
+                *anyopaque,
+                ast.Statement,
+                std.json.Stringify.Options,
+            ) Error!void;
+
+        pub fn init() @This() {
+            return .{};
+        }
+    };
+}
+
+/// Can be called on any pointer to a struct
+/// or a pointer to that (recursively)
+fn accessFieldOfStructOrPtr(
+    access: ast.AccessExpression,
+    stmt: ast.Statement,
+    writer: *std.Io.Writer,
+    val: anytype,
+    json_opts: std.json.Stringify.Options,
+) Error!void {
+    switch (@typeInfo(@TypeOf(val))) {
+        .@"struct" => {
+            const memo: Memo(@TypeOf(val)) = .{};
+            var v = val;
+            try memo.access_map.get(access.literal[1..]).?(writer, @ptrCast(&v), stmt, json_opts);
+        },
+        .pointer => |ptr| {
+            switch (@typeInfo(ptr.child)) {
+                .@"struct" => try accessFieldOfStructOrPtr(access, stmt, writer, val.*, json_opts),
+                .pointer => try accessFieldOfStructOrPtr(access, stmt, writer, val.*.*, json_opts),
+                else => @panic("unexpected"),
+            }
+            switch (ptr.size) {
+                .many, .slice => {
+                    var i = 0;
+                    if (ptr.sentinel()) |sent| {
+                        while (!std.meta.eql(val[i], sent)) : (i += 1)
+                            try accessFieldOfStructOrPtr(access, stmt, writer, val[i], json_opts);
+                    } else return error.CannotSerialize;
+                },
+                else => {},
+            }
+        },
+        else => {},
+    }
+}
+
 pub fn renderStatement(
-    a: Allocator,
     writer: *std.Io.Writer,
     val: anytype,
     statement: ast.Statement,
     json_opts: std.json.Stringify.Options,
-) anyerror!void {
+) Error!void {
     // _ = writer;
     // _ = val;
     switch (statement) {
         .@"for" => |s| {
             for (s.block.body) |b| {
-                try renderStatement(a, writer, val, b, json_opts);
+                try accessFieldOfStructOrPtr(s.access, b, writer, val, json_opts);
             }
             if (s.alternatives) |alts| {
                 for (alts) |alt| {

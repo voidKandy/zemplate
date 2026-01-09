@@ -22,7 +22,7 @@ pub inline fn writeType(
     print_json: bool,
 ) Error!void {
     if (@TypeOf(inst) != T) @panic(@typeName(T) ++ " =! " ++ @typeName(@TypeOf(inst)));
-    log.debug("Trying writetype: {s}", .{@typeName(T)});
+    log.warn("Trying writetype: {s}", .{@typeName(T)});
 
     if (print_json)
         return try std.json.Stringify.value(inst, json_opts, writer);
@@ -69,15 +69,30 @@ pub inline fn writeType(
 
             if (ptr.size == .one) return try writeType(ptr.child, inst.*, writer, json_opts, print_json);
         },
-        .@"struct" => {
+        .@"struct" => |s| {
             log.debug(
                 \\ struct type
             , .{});
             if (T == ArrayList(u8)) {
-                try writer.writeAll(inst.items);
-            } else {
-                log.warn("No branch for handling {s}", .{@typeName(T)});
+                return try writer.writeAll(inst.items);
             }
+
+            inline for (s.fields) |fe| {
+                log.debug(
+                    \\ field '{s}' of {s}
+                , .{ fe.name, @typeName(T) });
+                writeType(fe.type, @field(inst, fe.name), writer, json_opts, print_json) catch |e| {
+                    if (e != error.CannotSerialize) @panic(@errorName(e));
+                    log.err(
+                        \\ failing field '{s}'
+                    , .{fe.name});
+                };
+            }
+
+            return;
+            // if (@hasDecl(T, "format"))
+            //     return try inst.format(writer);
+            // log.warn("No branch for handling {s}", .{@typeName(T)});
         },
         .int => |int| {
             return try if (int.bits == @bitSizeOf(u8))
