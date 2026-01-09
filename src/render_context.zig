@@ -3,6 +3,7 @@ const root = @import("root.zig");
 const iterate = @import("iterate.zig");
 const util = @import("util.zig");
 const ast = @import("ast.zig");
+const scope_mod = @import("scope.zig");
 const Error = root.Error;
 const parse = root.parse;
 const Allocator = std.mem.Allocator;
@@ -95,54 +96,9 @@ fn genericRenderVisit(n: anytype, args: anytype) anyerror!void {
     return;
 }
 
-inline fn Memo(comptime T: type) type {
-    return struct {
-        inline fn accessMapKvs() []const struct { []const u8, Func } {
-            const FIELDS = @typeInfo(T).@"struct".fields;
-
-            const arr: [FIELDS.len]struct { []const u8, Func } = blk: {
-                var tmp: [FIELDS.len]struct { []const u8, Func } = undefined;
-                for (FIELDS, &tmp) |f, *a| {
-                    a.* = .{
-                        f.name,
-                        &struct {
-                            fn call(
-                                w: *std.Io.Writer,
-                                o: *anyopaque,
-                                st: ast.Statement,
-                                json_opts: std.json.Stringify.Options,
-                            ) Error!void {
-                                const val: *T = @ptrCast(@alignCast(o));
-                                const fld = @field(val, f.name);
-                                try renderStatement(w, fld, st, json_opts);
-                            }
-                        }.call,
-                    };
-                }
-                break :blk tmp;
-            };
-
-            return &arr;
-        }
-
-        access_map: std.StaticStringMap(Func) = .initComptime(accessMapKvs()),
-
-        const Func =
-            *const fn (
-                *std.Io.Writer,
-                *anyopaque,
-                ast.Statement,
-                std.json.Stringify.Options,
-            ) Error!void;
-
-        pub fn init() @This() {
-            return .{};
-        }
-    };
-}
-
 /// Can be called on any pointer to a struct
 /// or a pointer to that (recursively)
+/// SHOULD RETURN AN OBJECT
 fn accessFieldOfStructOrPtr(
     access: ast.AccessExpression,
     stmt: ast.Statement,
@@ -152,9 +108,13 @@ fn accessFieldOfStructOrPtr(
 ) Error!void {
     switch (@typeInfo(@TypeOf(val))) {
         .@"struct" => {
-            const memo: Memo(@TypeOf(val)) = .{};
-            var v = val;
-            try memo.access_map.get(access.literal[1..]).?(writer, @ptrCast(&v), stmt, json_opts);
+            // const memo: scope_mod.Scope(@TypeOf(val)) = .init();
+            // var v = val;
+            // const func = memo.access_map.get(access.literal) orelse {
+            //     log.err("failed to get function for key: {s}", .{access.literal});
+            //     return error.CannotIterate;
+            // };
+            // try func(writer, @ptrCast(&v), stmt, json_opts);
         },
         .pointer => |ptr| {
             switch (@typeInfo(ptr.child)) {
@@ -179,6 +139,7 @@ fn accessFieldOfStructOrPtr(
 
 pub fn renderStatement(
     writer: *std.Io.Writer,
+    // outer_scope: anytype,
     val: anytype,
     statement: ast.Statement,
     json_opts: std.json.Stringify.Options,
@@ -187,6 +148,19 @@ pub fn renderStatement(
     // _ = val;
     switch (statement) {
         .@"for" => |s| {
+            const Scope = try scope_mod.Scope(@TypeOf(val));
+            const scope = Scope.init();
+            // const scope = ScopeLookup.get(s.access.literal, val);
+            // const scope: scope_mod.Scope(@TypeOf(val)) = .init();
+            // const scope: scope_mod.GetScope(@TypeOf(val), s.access.literal) = .init();
+            // const scopeFunc = scope_builder.build_map.get(s.access.literal) orelse {
+            //     log.err(
+            //         \\ Scope builder has no function for scope with literal '{s}'
+            //     , .{s.access.literal});
+            // };
+            // const scope = scopeFunc();
+            _ = scope;
+
             for (s.block.body) |b| {
                 try accessFieldOfStructOrPtr(s.access, b, writer, val, json_opts);
             }
@@ -207,23 +181,15 @@ pub fn renderStatement(
             _ = s;
         },
         .expression => |s| {
-            if (s.access.literal.len == 1 and s.access.literal[0] == '.') {
-                try util.writeType(
-                    @TypeOf(val),
-                    val,
-                    writer,
-                    json_opts,
-                    s.access.json,
-                );
-            } else {
-                try util.writeField(
-                    val,
-                    writer,
-                    s.access.literal[1..],
-                    json_opts,
-                    s.access.json,
-                );
-            }
+            _ = s;
+            // switch (s.access.type) {
+            //     .direct => |depth| {
+            //         if (depth > 1) @panic("UNIMPLEMENTED");
+            //         try util.writeType(@TypeOf(val), val, writer, json_opts, s.access.json);
+            //     },
+
+            //     .field => |fd| try util.writeField(val, writer, fd, json_opts, s.access.json),
+            // }
         },
         .literal => |s| {
             _ = s;

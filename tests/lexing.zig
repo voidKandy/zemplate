@@ -36,9 +36,9 @@ const LexerTestCase = struct {
         defer lexer.deinit();
         var i: usize = 0;
         var tok = lexer.nextToken();
-        while (tok.typ != .eof) : (tok = lexer.nextToken()) {
+        while (tok.type != .eof) : (tok = lexer.nextToken()) {
             if (self.ignore_whitespace) {
-                if (tok.typ.isWhitespace()) continue;
+                if (tok.type.isWhitespace()) continue;
             }
             if (!self.expected_tokens[i].eql(tok)) {
                 return .{
@@ -85,123 +85,123 @@ const ALL_CASES = &[_]LexerTestCase{
         .expected_tokens = &[_]Token{
             .{
                 .literal = "||zz",
-                .typ = .statement_open,
+                .type = .statement_open,
             },
             .{
                 .literal = "if",
-                .typ = .if_open,
+                .type = .if_open,
             },
             .{
                 .literal = ".something",
-                .typ = .access,
+                .type = .access,
             },
             .{
                 .literal = ">",
-                .typ = .greater_than,
+                .type = .greater_than,
             },
             .{
                 .literal = "34",
-                .typ = .literal,
+                .type = .literal,
             },
             .{
                 .literal = "zz||",
-                .typ = .statement_close,
+                .type = .statement_close,
             },
             .{
                 .literal = "{|",
-                .typ = .expression_open,
+                .type = .expression_open,
             },
             .{
                 .literal = ".",
-                .typ = .access,
+                .type = .access,
             },
             .{
                 .literal = "|}",
-                .typ = .expression_close,
+                .type = .expression_close,
             },
             .{
                 .literal = "||zz",
-                .typ = .statement_open,
+                .type = .statement_open,
             },
             .{
                 .literal = "if",
-                .typ = .if_open,
+                .type = .if_open,
             },
             .{
                 .literal = ".nested_thing",
-                .typ = .access,
+                .type = .access,
             },
             .{
                 .literal = "==",
-                .typ = .equal_to,
+                .type = .equal_to,
             },
             .{
                 .literal = "0",
-                .typ = .literal,
+                .type = .literal,
             },
             .{
                 .literal = "zz||",
-                .typ = .statement_close,
+                .type = .statement_close,
             },
             .{
                 .literal = "{|",
-                .typ = .expression_open,
+                .type = .expression_open,
             },
             .{
                 .literal = ".",
-                .typ = .access,
+                .type = .access,
             },
             .{
                 .literal = "|}",
-                .typ = .expression_close,
+                .type = .expression_close,
             },
             .{
                 .literal = "||zz",
-                .typ = .statement_open,
+                .type = .statement_open,
             },
             .{
                 .literal = "else",
-                .typ = .@"else",
+                .type = .@"else",
             },
             .{
                 .literal = "zz||",
-                .typ = .statement_close,
+                .type = .statement_close,
             },
             .{
                 .literal = "||zz",
-                .typ = .statement_open,
+                .type = .statement_open,
             },
             .{
                 .literal = "endif",
-                .typ = .if_close,
+                .type = .if_close,
             },
             .{
                 .literal = "zz||",
-                .typ = .statement_close,
+                .type = .statement_close,
             },
             .{
                 .literal = "||zz",
-                .typ = .statement_open,
+                .type = .statement_open,
             },
             .{
                 .literal = "else",
-                .typ = .@"else",
+                .type = .@"else",
             },
             .{
                 .literal = "zz||",
-                .typ = .statement_close,
+                .type = .statement_close,
             },
             .{
                 .literal = "||zz",
-                .typ = .statement_open,
+                .type = .statement_open,
             },
             .{
                 .literal = "endif",
-                .typ = .if_close,
+                .type = .if_close,
             },
             .{
                 .literal = "zz||",
-                .typ = .statement_close,
+                .type = .statement_close,
             },
         },
     },
@@ -218,167 +218,167 @@ const ALL_CASES = &[_]LexerTestCase{
         .expected_tokens = &[_]Token{
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "||zz",
-                .typ = .statement_open,
+                .type = .statement_open,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "for",
-                .typ = .for_open,
+                .type = .for_open,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = ".array_array_field",
-                .typ = .access,
+                .type = .access,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "zz||",
-                .typ = .statement_close,
+                .type = .statement_close,
             },
             .{
                 .literal = "\n",
-                .typ = .newline,
+                .type = .newline,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "||zz",
-                .typ = .statement_open,
+                .type = .statement_open,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "for",
-                .typ = .for_open,
+                .type = .for_open,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = ".",
-                .typ = .access,
+                .type = .access,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "zz||",
-                .typ = .statement_close,
+                .type = .statement_close,
             },
             .{
                 .literal = "\n",
-                .typ = .newline,
+                .type = .newline,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "{|",
-                .typ = .expression_open,
+                .type = .expression_open,
             },
             .{
                 .literal = "..",
-                .typ = .access,
+                .type = .access,
             },
             .{
                 .literal = "|}",
-                .typ = .expression_close,
+                .type = .expression_close,
             },
             .{
                 .literal = "\n",
-                .typ = .newline,
+                .type = .newline,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "{|",
-                .typ = .expression_open,
+                .type = .expression_open,
             },
             .{
                 .literal = ".",
-                .typ = .access,
+                .type = .access,
             },
             .{
                 .literal = "|}",
-                .typ = .expression_close,
+                .type = .expression_close,
             },
             .{
                 .literal = "\n",
-                .typ = .newline,
+                .type = .newline,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "||zz",
-                .typ = .statement_open,
+                .type = .statement_open,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "endfor",
-                .typ = .for_close,
+                .type = .for_close,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "zz||",
-                .typ = .statement_close,
+                .type = .statement_close,
             },
             .{
                 .literal = "\n",
-                .typ = .newline,
+                .type = .newline,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "||zz",
-                .typ = .statement_open,
+                .type = .statement_open,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "endfor",
-                .typ = .for_close,
+                .type = .for_close,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "zz||",
-                .typ = .statement_close,
+                .type = .statement_close,
             },
         },
     },
@@ -396,219 +396,219 @@ const ALL_CASES = &[_]LexerTestCase{
         .expected_tokens = &[_]Token{
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "<div>",
-                .typ = .literal,
+                .type = .literal,
             },
             .{
                 .literal = "\n",
-                .typ = .newline,
+                .type = .newline,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "||zz",
-                .typ = .statement_open,
+                .type = .statement_open,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = ".field",
-                .typ = .access,
+                .type = .access,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "zz||",
-                .typ = .statement_close,
+                .type = .statement_close,
             },
             .{
                 .literal = "\n",
-                .typ = .newline,
+                .type = .newline,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "<div",
-                .typ = .literal,
+                .type = .literal,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "attribute=\"",
-                .typ = .literal,
+                .type = .literal,
             },
             .{
                 .literal = "||zz",
-                .typ = .statement_open,
+                .type = .statement_open,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = ".attr.sub",
-                .typ = .access,
+                .type = .access,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "zz||",
-                .typ = .statement_close,
+                .type = .statement_close,
             },
             .{
                 .literal = "\"></div>",
-                .typ = .literal,
+                .type = .literal,
             },
             .{
                 .literal = "\n",
-                .typ = .newline,
+                .type = .newline,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "<p>",
-                .typ = .literal,
+                .type = .literal,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "for",
-                .typ = .literal,
+                .type = .literal,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "too",
-                .typ = .literal,
+                .type = .literal,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "long",
-                .typ = .literal,
+                .type = .literal,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "</p>",
-                .typ = .literal,
+                .type = .literal,
             },
             .{
                 .literal = "\n",
-                .typ = .newline,
+                .type = .newline,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "||zz",
-                .typ = .statement_open,
+                .type = .statement_open,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "for",
-                .typ = .for_open,
+                .type = .for_open,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = ".field2",
-                .typ = .access,
+                .type = .access,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "zz||",
-                .typ = .statement_close,
+                .type = .statement_close,
             },
             .{
                 .literal = "\n",
-                .typ = .newline,
+                .type = .newline,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "{|",
-                .typ = .expression_open,
+                .type = .expression_open,
             },
             .{
                 .literal = ".",
-                .typ = .access,
+                .type = .access,
             },
             .{
                 .literal = "|}",
-                .typ = .expression_close,
+                .type = .expression_close,
             },
             .{
                 .literal = "\n",
-                .typ = .newline,
+                .type = .newline,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "||zz",
-                .typ = .statement_open,
+                .type = .statement_open,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "endfor",
-                .typ = .for_close,
+                .type = .for_close,
             },
             .{
                 .literal = " ",
-                .typ = .space,
+                .type = .space,
             },
             .{
                 .literal = "zz||",
-                .typ = .statement_close,
+                .type = .statement_close,
             },
         },
     },

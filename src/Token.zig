@@ -3,28 +3,28 @@ const mem = std.mem;
 const log = std.log.scoped(.Token);
 
 literal: []const u8,
-typ: Type,
+type: Type,
 
 const Self = @This();
 
 pub fn create(str: []const u8, typ: Type) Self {
-    return .{ .literal = str, .typ = typ };
+    return .{ .literal = str, .type = typ };
 }
 
 pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     return try writer.print(
         \\[.{s}: '{s}']
-    , .{ @tagName(self.typ), self.literal });
+    , .{ @tagName(self.type), self.literal });
 }
 
 pub inline fn eql(self: Self, other: Self) bool {
     return (mem.eql(u8, self.literal, other.literal) and
-        @intFromEnum(self.typ) == @intFromEnum(other.typ));
+        @intFromEnum(self.type) == @intFromEnum(other.type));
 }
 
 pub const EOF = Self{
     .literal = "",
-    .typ = .eof,
+    .type = .eof,
 };
 
 pub const Type = enum {

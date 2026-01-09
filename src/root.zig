@@ -12,7 +12,7 @@ pub const Token = @import("Token.zig");
 
 pub const Error = error{
     SyntaxInvalid,
-    InvalidType,
+    NotStructType,
     InvalidNext,
     CannotSerialize,
     CannotIterate,

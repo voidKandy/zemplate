@@ -103,7 +103,7 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                 .{
                     .@"if" = .{
                         .condition = try ast.ExpressionStatement.create(a, .{
-                            .access = .{
+                            .access = ast.AccessExpression{
                                 .literal = try a.dupe(u8, ".something"),
                             },
                         }),

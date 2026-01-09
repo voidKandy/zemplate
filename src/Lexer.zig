@@ -122,12 +122,12 @@ fn readWord(self: *Self) usize {
 /// returns SyntaxInvalid if next token doesn't match expected
 pub fn expectNextNonWhitespace(self: *Self, typ: Token.Type) Error!Token {
     var t = self.nextTokenSkipWhitespace();
-    while (t.typ != .eof) : (t = self.nextTokenSkipWhitespace()) {
-        if (t.typ != typ) {
+    while (t.type != .eof) : (t = self.nextTokenSkipWhitespace()) {
+        if (t.type != typ) {
             log.err(
                 \\ Expected {any} token
                 \\ Got {any}
-            , .{ typ, t.typ });
+            , .{ typ, t.type });
             return error.SyntaxInvalid;
         }
         return t;
@@ -137,7 +137,7 @@ pub fn expectNextNonWhitespace(self: *Self, typ: Token.Type) Error!Token {
 
 pub fn nextTokenSkipWhitespace(self: *Self) Token {
     var token = self.nextToken();
-    while (token.typ.isWhitespace()) {
+    while (token.type.isWhitespace()) {
         token = self.nextToken();
     }
     return token;
@@ -205,16 +205,16 @@ pub fn nextToken(self: *Self) Token {
     slice_start = self.pos;
 
     if (token_opt) |token| {
-        if (!token.typ.isWhitespace())
-            self.prev_token = token.typ;
+        if (!token.type.isWhitespace())
+            self.prev_token = token.type;
 
-        if (token.typ == .statement_open)
+        if (token.type == .statement_open)
             self.in_statement = true;
 
-        if (token.typ == .expression_open)
+        if (token.type == .expression_open)
             self.in_expression = true;
 
-        if (token.typ == .statement_close) {
+        if (token.type == .statement_close) {
             if (!self.in_statement) {
                 log.err(
                     \\ Encountered a .statement_close token before encountering a .statement_open token
@@ -223,7 +223,7 @@ pub fn nextToken(self: *Self) Token {
             self.in_statement = false;
         }
 
-        if (token.typ == .expression_close) {
+        if (token.type == .expression_close) {
             if (!self.in_expression) {
                 log.err(
                     \\ Encountered a .expression_close token before encountering a .expression_open token

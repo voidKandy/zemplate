@@ -197,7 +197,7 @@ pub const ExpressionStatement = union(enum) {
                 if (other != .access) return false;
                 const this = self.access.*;
                 const oth = other.access.*;
-                if (this.json != oth.json or !stdEql(u8, this.literal, oth.literal)) return false;
+                if (this.json != oth.json or !std.mem.eql(u8, this.literal, oth.literal)) return false;
             },
             .comparison => {
                 if (other != .comparison) return false;
@@ -287,7 +287,7 @@ pub const AccessExpression = struct {
     json: bool = false,
 
     pub fn eql(self: @This(), other: @This()) bool {
-        return (stdEql(u8, self.literal, other.literal) and self.json == other.json);
+        return (std.mem.eql(u8, self.literal, other.literal) and self.json == other.json);
     }
 
     pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {

@@ -102,7 +102,7 @@ pub fn logErrors(self: Self, _log: anytype) void {
 pub fn parseProgram(self: *Self) ParseError!ast.Program {
     var program = ast.Program{};
 
-    while (!self.current_token.typ.eql(.eof)) {
+    while (!self.current_token.type.eql(.eof)) {
         const stmt = try self.parseStatement();
 
         if (self.errors.items.len > 0) {
@@ -120,7 +120,7 @@ pub fn parseProgram(self: *Self) ParseError!ast.Program {
 
 fn parseStatement(self: *Self) ParseError!?ast.Statement {
     self.skipCurrentWhitespace();
-    switch (self.current_token.typ) {
+    switch (self.current_token.type) {
         .statement_open => {
             self.progressTokenSkipWhitespace();
             return self.parseStatement();
@@ -170,7 +170,7 @@ fn parseLiteralStatement(self: *Self) ParseError!?ast.LiteralStatement {
     if (!try self.expectCurrent(.literal)) return null;
 
     if (self.prev_token) |p| {
-        if (p.typ.isWhitespace()) {
+        if (p.type.isWhitespace()) {
             try writer.writer.writeAll(p.literal);
         }
     }
@@ -178,7 +178,7 @@ fn parseLiteralStatement(self: *Self) ParseError!?ast.LiteralStatement {
     defer writer.deinit();
     while (true) {
         try writer.writer.writeAll(self.current_token.literal);
-        if (!self.peek_token.typ.isWhitespace() and self.peek_token.typ != .literal) break;
+        if (!self.peek_token.type.isWhitespace() and self.peek_token.type != .literal) break;
         self.progressToken();
     }
 
@@ -194,13 +194,13 @@ fn parseAccessExpression(self: *Self) ParseError!?ast.AccessExpression {
     };
     self.progressTokenSkipWhitespace();
 
-    while (self.current_token.typ != .expression_close and
-        self.current_token.typ != .statement_close and
-        !self.current_token.typ.isComparison())
+    while (self.current_token.type != .expression_close and
+        self.current_token.type != .statement_close and
+        !self.current_token.type.isComparison())
     {
         // when more serialization options are added
         // this will need to account for those
-        switch (self.current_token.typ) {
+        switch (self.current_token.type) {
             .json => access.json = true,
             else => log.warn(
                 \\ Token ignored when parsing access token: {f}
@@ -217,7 +217,7 @@ fn parseElseBlock(self: *Self, if_or_for: enum { @"if", @"for" }) ParseError!?as
     self.progressTokenSkipWhitespace();
 
     var condition: ?ast.ExpressionStatement = null;
-    if (self.current_token.typ == .if_open)
+    if (self.current_token.type == .if_open)
         condition = try self.parseExpressionStatement() orelse {
             try self.emitError(
                 \\ Else statement contained 'if' but no condition followed
@@ -237,12 +237,12 @@ fn parseElseBlock(self: *Self, if_or_for: enum { @"if", @"for" }) ParseError!?as
         };
 
     while (true) {
-        if (self.current_token.typ == .statement_open) self.progressTokenSkipWhitespace();
-        if (self.current_token.typ == .@"else") break;
-        if (self.current_token.typ == closing_tag) {
+        if (self.current_token.type == .statement_open) self.progressTokenSkipWhitespace();
+        if (self.current_token.type == .@"else") break;
+        if (self.current_token.type == closing_tag) {
             if (nesting_depth == 0) break else nesting_depth -= 1;
         }
-        if (self.current_token.typ == opening_tag) nesting_depth += 1;
+        if (self.current_token.type == opening_tag) nesting_depth += 1;
 
         const statement = try self.parseStatement() orelse {
             try self.emitError(
@@ -254,11 +254,11 @@ fn parseElseBlock(self: *Self, if_or_for: enum { @"if", @"for" }) ParseError!?as
         self.progressTokenSkipWhitespace();
     }
 
-    if (self.current_token.typ != closing_tag and self.current_token.typ != .@"else")
+    if (self.current_token.type != closing_tag and self.current_token.type != .@"else")
         try self.emitError(
             \\ Expected Else Statement to end with {any} or {any}
             \\ Instead got: {any}
-        , .{ closing_tag, .@"else", self.current_token.typ });
+        , .{ closing_tag, .@"else", self.current_token.type });
 
     // if (!try self.expectCurrent(closing_tag)) return null;
 
@@ -283,9 +283,9 @@ fn parseForStatement(self: *Self) ParseError!?ast.ForStatement {
     var alternatives: ArrayList(ast.ElseBlock) = .empty;
 
     self.progressTokenSkipWhitespace();
-    if (self.current_token.typ == .statement_open) self.progressTokenSkipWhitespace();
+    if (self.current_token.type == .statement_open) self.progressTokenSkipWhitespace();
     while (true) {
-        switch (self.current_token.typ) {
+        switch (self.current_token.type) {
             .for_close => break,
             .@"else" => {
                 const else_blk = try self.parseElseBlock(.@"for") orelse {
@@ -305,11 +305,11 @@ fn parseForStatement(self: *Self) ParseError!?ast.ForStatement {
                     return null;
                 };
 
-                if (self.current_token.typ == .statement_close) self.progressToken();
+                if (self.current_token.type == .statement_close) self.progressToken();
 
                 try body.append(self.arena.allocator(), statement);
                 self.progressTokenSkipWhitespace();
-                if (self.current_token.typ == .statement_open) self.progressTokenSkipWhitespace();
+                if (self.current_token.type == .statement_open) self.progressTokenSkipWhitespace();
             },
         }
     }
@@ -338,9 +338,9 @@ fn parseIfStatement(self: *Self) ParseError!?ast.IfStatement {
     var alternatives: ArrayList(ast.ElseBlock) = .empty;
 
     self.progressTokenSkipWhitespace();
-    if (self.current_token.typ == .statement_open) self.progressTokenSkipWhitespace();
+    if (self.current_token.type == .statement_open) self.progressTokenSkipWhitespace();
     while (true) {
-        switch (self.current_token.typ) {
+        switch (self.current_token.type) {
             .if_close => break,
             .@"else" => {
                 const else_blk = try self.parseElseBlock(.@"if") orelse {
@@ -359,11 +359,11 @@ fn parseIfStatement(self: *Self) ParseError!?ast.IfStatement {
                     , .{});
                     return null;
                 };
-                if (self.current_token.typ == .statement_close) self.progressToken();
+                if (self.current_token.type == .statement_close) self.progressToken();
 
                 try body.append(self.arena.allocator(), statement);
                 self.progressTokenSkipWhitespace();
-                if (self.current_token.typ == .statement_open) self.progressTokenSkipWhitespace();
+                if (self.current_token.type == .statement_open) self.progressTokenSkipWhitespace();
             },
         }
     }
@@ -387,7 +387,7 @@ fn parseExpressionStatement(self: *Self) ParseError!?ast.ExpressionStatement {
     self.progressTokenSkipWhitespace();
 
     const first = blk: {
-        switch (self.current_token.typ) {
+        switch (self.current_token.type) {
             .literal => {
                 const literal_expr =
                     ast.LiteralExpression.tryFromLiteral(self.current_token.literal) orelse {
@@ -409,7 +409,7 @@ fn parseExpressionStatement(self: *Self) ParseError!?ast.ExpressionStatement {
             else => {
                 try self.emitError(
                     \\ Cannot parse expression statement starting with token: {any}
-                , .{self.current_token.typ});
+                , .{self.current_token.type});
 
                 return null;
             },
@@ -417,8 +417,8 @@ fn parseExpressionStatement(self: *Self) ParseError!?ast.ExpressionStatement {
     };
 
     // self.progressTokenSkipWhitespace();
-    if (!self.current_token.typ.isComparison()) {
-        switch (self.current_token.typ) {
+    if (!self.current_token.type.isComparison()) {
+        switch (self.current_token.type) {
             .expression_close, .statement_close => {},
             else => |t| {
                 try self.emitError(
@@ -431,7 +431,7 @@ fn parseExpressionStatement(self: *Self) ParseError!?ast.ExpressionStatement {
         return first;
     }
 
-    const operator = ast.ComparisonExpression.Operator.tryFromTokenType(self.current_token.typ).?;
+    const operator = ast.ComparisonExpression.Operator.tryFromTokenType(self.current_token.type).?;
     const right = try self.parseExpressionStatement() orelse {
         try self.emitError("Failed to parse right side expression in comparison\n", .{});
         return null;
@@ -451,11 +451,11 @@ fn progressToken(self: *Self) void {
 
 /// consumes tokens until current_token is not whitespace
 fn skipCurrentWhitespace(self: *Self) void {
-    while (self.current_token.typ.isWhitespace()) {
+    while (self.current_token.type.isWhitespace()) {
         self.progressToken();
     }
 
-    std.debug.assert(!self.current_token.typ.isWhitespace());
+    std.debug.assert(!self.current_token.type.isWhitespace());
 }
 
 /// Progresses tokens, ensuring current != whitespace
@@ -465,7 +465,7 @@ fn progressTokenSkipWhitespace(self: *Self) void {
 }
 
 fn expectCurrent(self: *Self, expected_current: Token.Type) Allocator.Error!bool {
-    if (self.current_token.typ == expected_current) {
+    if (self.current_token.type == expected_current) {
         return true;
     }
 
@@ -476,17 +476,17 @@ fn expectCurrent(self: *Self, expected_current: Token.Type) Allocator.Error!bool
 }
 
 fn expectPrevious(self: *Self, expected_prev: Token.Type) Allocator.Error!bool {
-    if (self.prev_token != null and self.prev_token.?.typ == expected_prev) {
+    if (self.prev_token != null and self.prev_token.?.type == expected_prev) {
         return true;
     }
     try self.emitError(
         \\ Expected previous to be {any}, got {s} instead
-    , .{ expected_prev, if (self.prev_token) |p| @tagName(p.typ) else "null" });
+    , .{ expected_prev, if (self.prev_token) |p| @tagName(p.type) else "null" });
     return false;
 }
 
 fn expectPeekAndProgress(self: *Self, expected_next: Token.Type) Allocator.Error!bool {
-    if (self.peek_token.typ == expected_next) {
+    if (self.peek_token.type == expected_next) {
         self.progressToken();
         return true;
     }
