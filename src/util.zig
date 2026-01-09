@@ -50,12 +50,12 @@ pub inline fn writeType(
         .pointer => |ptr| {
             log.debug(
                 \\ pointer type
-            , .{});
+                \\ size: {any}
+            , .{ptr.size});
             if (ptr.child == u8) {
-                log.debug("size: {any}", .{ptr.size});
                 switch (ptr.size) {
                     .slice => {
-                        log.debug("Bytes: {s}", .{inst});
+                        log.warn("Bytes: {s}", .{inst});
                         try writer.writeAll(inst);
 
                         return;

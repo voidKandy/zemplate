@@ -13,9 +13,14 @@ test "rendering" {
 const allocator = std.testing.allocator;
 
 fn iterationTest() !void {
-    const Test = struct {
+    const Other = struct {
         string: []const u8,
-        with_string: struct { string: []const u8 },
+    };
+    const Test = struct {
+        variable: u32,
+        inner: Other,
+        arr: []const Other,
+        string: []const u8,
     };
     var w = std.Io.Writer.Allocating.init(allocator);
     var arena = std.heap.ArenaAllocator.init(allocator);
@@ -32,15 +37,28 @@ fn iterationTest() !void {
     );
     var parser = try Parser.init(a, &lexer, null);
     const program = try parser.parseProgram();
+    const t =
+        Test{
+            .variable = 42,
+            .string = "outer string",
+            .inner = .{ .string = "inner string" },
+            .arr = &[_]Other{
+                .{
+                    .string = "one",
+                },
+                .{
+                    .string = "two",
+                },
+            },
+        };
+    const scope = try zemplate.scope.Scope.init(&t, a);
+    // const Scope = try zemplate.scope.Scope(Test);
+    // const scope = Scope.init(t);
 
     try zemplate.render_context.renderStatement(
+        a,
         &w.writer,
-        Test{
-            .string = "outer string",
-            .with_string = .{
-                .string = "inner string",
-            },
-        },
+        scope,
         program.statements.items[0],
         .{},
     );

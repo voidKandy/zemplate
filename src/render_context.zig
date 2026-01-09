@@ -138,32 +138,30 @@ fn accessFieldOfStructOrPtr(
 }
 
 pub fn renderStatement(
+    a: Allocator,
     writer: *std.Io.Writer,
     // outer_scope: anytype,
-    val: anytype,
+    /// must be some type returned by `Scope`
+    scope: scope_mod.Scope,
     statement: ast.Statement,
     json_opts: std.json.Stringify.Options,
 ) Error!void {
+    log.warn(
+        \\ RENDERING STATEMENT: {s}
+    , .{@tagName(statement)});
     // _ = writer;
     // _ = val;
     switch (statement) {
         .@"for" => |s| {
-            const Scope = try scope_mod.Scope(@TypeOf(val));
-            const scope = Scope.init();
-            // const scope = ScopeLookup.get(s.access.literal, val);
-            // const scope: scope_mod.Scope(@TypeOf(val)) = .init();
-            // const scope: scope_mod.GetScope(@TypeOf(val), s.access.literal) = .init();
-            // const scopeFunc = scope_builder.build_map.get(s.access.literal) orelse {
-            //     log.err(
-            //         \\ Scope builder has no function for scope with literal '{s}'
-            //     , .{s.access.literal});
-            // };
-            // const scope = scopeFunc();
-            _ = scope;
-
-            for (s.block.body) |b| {
-                try accessFieldOfStructOrPtr(s.access, b, writer, val, json_opts);
+            const getChScopeFn = scope.child_scopes.get(s.access.literal) orelse {
+                log.err("No scope for literal: {s}", .{s.access.literal});
+                return error.CannotIterate;
+            };
+            const ch_scope = try getChScopeFn(a, scope);
+            for (s.block.body) |st| {
+                try renderStatement(a, writer, ch_scope, st, json_opts);
             }
+
             if (s.alternatives) |alts| {
                 for (alts) |alt| {
                     if (alt.condition) |cond| {
@@ -171,8 +169,6 @@ pub fn renderStatement(
                     }
                 }
             }
-            // const this_iter = iter.all.get(s.access[1..]) orelse @panic("NO ITER");
-            // this_iter.callNextAndVisit(.{writer});
         },
         .@"if" => |s| {
             _ = s;
@@ -181,152 +177,19 @@ pub fn renderStatement(
             _ = s;
         },
         .expression => |s| {
-            _ = s;
-            // switch (s.access.type) {
-            //     .direct => |depth| {
-            //         if (depth > 1) @panic("UNIMPLEMENTED");
-            //         try util.writeType(@TypeOf(val), val, writer, json_opts, s.access.json);
-            //     },
-
-            //     .field => |fd| try util.writeField(val, writer, fd, json_opts, s.access.json),
-            // }
+            switch (s) {
+                .access => |acc| {
+                    const accessFn = scope.access_map.get(acc.literal) orelse {
+                        log.err("No scope for literal: {s}", .{acc.literal});
+                        return error.CannotSerialize;
+                    };
+                    try accessFn(writer, scope, json_opts, acc.json);
+                },
+                else => {},
+            }
         },
         .literal => |s| {
-            _ = s;
+            try s.format(writer);
         },
     }
 }
-
-/// eventually generalize to Scope
-/// should include Iteration context as well as conditional Context
-const IterationScope = struct {
-    const IterCtx = @import("iterate.zig").StructIterationContext(@This());
-
-    arena: std.heap.ArenaAllocator,
-    writer: std.Io.Writer.Allocating,
-    /// In order to own the lifetimes of this we need to store it here
-    /// it may look unused but do not remove!
-    iter_ctx: IterCtx,
-    /// The name of the actual field being accessed
-    iterated_field_name: []const u8,
-    iterated_field: IterCtx.Field,
-
-    statement: ast.Statement,
-    json_opts: std.json.Stringify.Options,
-
-    pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        _ = self;
-        try writer.print(
-            \\ Unimplemented
-        , .{});
-    }
-
-    pub fn init(
-        OuterType: type,
-        outer: anytype,
-        a: Allocator,
-        iterated_field_name: []const u8,
-        statement: ast.Statement,
-        json_opts: std.json.Stringify.Options,
-    ) Error!@This() {
-        if (@TypeOf(outer) != *OuterType) @compileError(std.fmt.comptimePrint(
-            \\ Expected types to match
-            \\ {s} != *{s}
-        , .{ @typeName(@TypeOf(outer)), @typeName(OuterType) }));
-
-        var iter_ctx = try IterCtx.init(OuterType, outer, a);
-        log.debug("Created iteration context: \n{f}\n", .{iter_ctx});
-        const field = iter_ctx.getField(iterated_field_name) orelse return error.CannotIterate;
-        const arena = std.heap.ArenaAllocator.init(a);
-        const writer: std.Io.Writer.Allocating = .init(a);
-        return @This(){
-            .arena = arena,
-            .writer = writer,
-            .iter_ctx = iter_ctx,
-            .iterated_field_name = iterated_field_name,
-            .iterated_field = field,
-            .statement = statement,
-            .json_opts = json_opts,
-        };
-    }
-
-    pub fn deinit(self: *@This(), a: Allocator) void {
-        self.arena.deinit();
-        self.writer.deinit();
-        self.iter_ctx.deinit(a);
-    }
-
-    fn writeAccess(
-        self: @This(),
-        v: anytype,
-        fieldname_check: []const u8,
-        print_json: bool,
-    ) anyerror!void {
-        switch (@typeInfo(@TypeOf(v))) {
-            .@"struct" => |s| {
-                inline for (s.fields) |f| {
-                    if (std.mem.eql(u8, f.name, fieldname_check)) {
-                        util.writeField(
-                            v,
-                            self.writer,
-                            fieldname_check,
-                            self.fjson_opts,
-                            self.print_json,
-                        ) catch |e| {
-                            log.err(
-                                \\ Failed to writefield: {any}
-                            , .{e});
-                            return e;
-                        };
-                    }
-                }
-            },
-
-            .pointer => |ptr| {
-                if (ptr.size != .one) return;
-
-                try self.writeAccess(
-                    fieldname_check,
-                    v,
-                    self.writer,
-                    self.json_opts,
-                    print_json,
-                );
-            },
-            else => {},
-        }
-    }
-
-    /// This function is what handles a "next iteration" of some field of the parent struct
-    pub fn visit(self: *@This(), val: anytype) Error!void {
-        switch (self.statement) {
-            .@"if" => {},
-            .@"for" => |_| {},
-            .block => {},
-            .expression => |e| {
-                switch (e) {
-                    .access => |acc| {
-                        try self.writeAccess(
-                            val,
-                            acc.literal,
-                            acc.json,
-                        );
-                    },
-                    .comparison => {},
-                    .literal => {},
-                }
-            },
-        }
-
-        // var in_expression = false;
-
-        // var tok = self.statement.nextToken();
-        // while (tok.typ != .eof) : (tok = self.statement.nextToken()) {
-        //     visit_log.debug(
-        //         \\On token: {any}
-        //     , .{tok.typ});
-        //     switch (tok.typ) {}
-        //     if (!tok.typ.isWhitespace()) self.prev_token = tok.typ;
-        // }
-    }
-};
