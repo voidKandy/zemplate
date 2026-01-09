@@ -4,6 +4,7 @@ comptime {
     _ = @import("lexing.zig");
     _ = @import("parsing.zig");
     _ = @import("rendering.zig");
+    _ = @import("scoping.zig");
 }
 
 const std = @import("std");

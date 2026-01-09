@@ -6,13 +6,13 @@ const Parser = zemplate.Parser;
 const runTest = @import("shared.zig").runTest;
 
 test "rendering" {
-    runTest("Iteration", iterationTest);
+    runTest("Render For Loop", renderForLoopTest);
     // runTest("some", iterationTest);
 }
 
 const allocator = std.testing.allocator;
 
-fn iterationTest() !void {
+fn renderForLoopTest() !void {
     const Other = struct {
         string: []const u8,
     };
