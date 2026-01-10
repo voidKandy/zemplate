@@ -116,31 +116,25 @@ const WriteAccessFunc = *const fn (
     bool,
 ) Error!void;
 
-inline fn accessMapKvs(comptime T: type) []const struct { []const u8, WriteAccessFunc } {
-    const CallFunc = struct {
-        fn getFunc(
-            comptime Type: type,
-            comptime field_name: []const u8,
-        ) WriteAccessFunc {
-            return &struct {
-                fn call(
-                    w: *std.Io.Writer,
-                    s: Scope,
-                    json_opts: std.json.Stringify.Options,
-                    print_json: bool,
-                ) Error!void {
-                    log.warn(
-                        \\ '{s}': {s}
-                    , .{ @typeName(Type), field_name });
-                    const val: *const Type = @ptrCast(@alignCast(s.instance));
-                    const fld = @field(val, field_name);
-                    try util.writeType(@FieldType(T, field_name), fld, w, json_opts, print_json);
-                }
-            }.call;
-        }
-    };
+pub inline fn accessMapKvsCount(comptime T: type) usize {
+    switch (@typeInfo(T)) {
+        .@"struct" => {
+            const FIELDS = @typeInfo(T).@"struct".fields;
 
-    const render_base_key = ".";
+            const N_NESTED = blk: {
+                comptime var i: usize = 0;
+                inline for (FIELDS) |f|
+                    i += accessMapKvsCount(f.type) - 1;
+                break :blk i;
+            };
+
+            return FIELDS.len + N_NESTED + 1;
+        },
+        else => return 1,
+    }
+}
+
+inline fn accessMapKvs(comptime T: type, comptime basename: []const u8) [accessMapKvsCount(T)]struct { []const u8, WriteAccessFunc } {
     const render_base: WriteAccessFunc = &struct {
         fn call(
             w: *std.Io.Writer,
@@ -157,76 +151,36 @@ inline fn accessMapKvs(comptime T: type) []const struct { []const u8, WriteAcces
         .@"struct" => {
             const FIELDS = @typeInfo(T).@"struct".fields;
 
-            const N_NESTED = blk: {
-                comptime var i: usize = 0;
-                inline for (FIELDS) |f| {
-                    switch (@typeInfo(f.type)) {
-                        .@"struct" => |st| {
-                            i += st.fields.len;
-                        },
-                        else => {},
-                    }
-                }
-                break :blk i;
-            };
+            const OUT_SIZE = accessMapKvsCount(T);
 
-            const MAP_SIZE = FIELDS.len + N_NESTED + 1;
-
-            const arr: [MAP_SIZE]struct { []const u8, WriteAccessFunc } = blk: {
-                var tmp: [MAP_SIZE]struct { []const u8, WriteAccessFunc } = undefined;
+            const arr: [OUT_SIZE]struct { []const u8, WriteAccessFunc } = blk: {
+                var tmp: [OUT_SIZE]struct { []const u8, WriteAccessFunc } = undefined;
                 tmp[0] = .{
-                    render_base_key,
+                    basename,
                     render_base,
                 };
                 var i: usize = 1;
                 inline for (FIELDS) |f| {
-                    {
-                        const name =
-                            std.fmt.comptimePrint(".{s}", .{f.name});
+                    const name = if (basename.len == 1)
+                        std.fmt.comptimePrint("{s}{s}", .{ basename, f.name })
+                    else
+                        std.fmt.comptimePrint("{s}.{s}", .{ basename, f.name });
+
+                    const entries = accessMapKvs(f.type, name);
+                    inline for (entries) |kv| {
                         tmp[i] = .{
-                            name,
-                            CallFunc.getFunc(T, f.name),
+                            kv.@"0",
+                            kv.@"1",
                         };
-                    }
-                    i += 1;
-
-                    switch (@typeInfo(f.type)) {
-                        .@"struct" => |st| {
-                            inline for (st.fields) |fld| {
-                                {
-                                    const name =
-                                        std.fmt.comptimePrint(".{s}.{s}", .{ f.name, fld.name });
-                                    tmp[i] = .{
-                                        name,
-
-                                        &struct {
-                                            fn call(
-                                                w: *std.Io.Writer,
-                                                s: Scope,
-                                                json_opts: std.json.Stringify.Options,
-                                                print_json: bool,
-                                            ) Error!void {
-                                                const val: *const T = @ptrCast(@alignCast(s.instance));
-                                                const field = @field(val, f.name);
-                                                const nested_field = @field(field, fld.name);
-                                                try util.writeType(@FieldType(@FieldType(T, f.name), fld.name), nested_field, w, json_opts, print_json);
-                                            }
-                                        }.call,
-                                    };
-                                }
-
-                                i += 1;
-                            }
-                        },
-                        else => {},
+                        i += 1;
                     }
                 }
                 break :blk tmp;
             };
 
-            return &arr;
+            return arr;
         },
-        else => return &[_]struct { []const u8, WriteAccessFunc }{.{ render_base_key, render_base }},
+        else => return [1]struct { []const u8, WriteAccessFunc }{.{ basename, render_base }},
     }
 }
 
@@ -238,56 +192,33 @@ pub const Scope = struct {
     pub fn init(val: anytype, a: Allocator) error{OutOfMemory}!@This() {
         if (@typeInfo(@TypeOf(val)) != .pointer) @panic("NON POINTER TYPE PASSED TO FUNCTION");
         const DerefT = Deref(@TypeOf(val));
-        const self = @This(){
-            .instance = @ptrCast(val),
-            .access_map = std.StaticStringMap(WriteAccessFunc).init(accessMapKvs(DerefT), a) catch return error.OutOfMemory,
-            .child_scopes = std.StaticStringMap(GetInnerScopeFunc).init(childScopesKvs(DerefT), a) catch return error.OutOfMemory,
-        };
+        const access_kvs = accessMapKvs(DerefT, ".");
+        const child_kvs = childScopesKvs(DerefT);
+
         log.warn(
             \\SCOPE FOR {s} INIT
         , .{@typeName(DerefT)});
-        for (self.access_map.keys()) |k| {
+        for (access_kvs) |k| {
             log.warn(
-                \\Access K: {s}
-            , .{k});
+                \\Access K: '{s}'
+            , .{k.@"0"});
         }
-        for (self.child_scopes.keys()) |k| {
+        for (child_kvs) |k| {
             log.warn(
-                \\Scope K: {s}
-            , .{k});
+                \\Scope K: '{s}'
+            , .{k.@"0"});
         }
+
+        const self = @This(){
+            .instance = @ptrCast(val),
+            .access_map = std.StaticStringMap(WriteAccessFunc).init(access_kvs, a) catch return error.OutOfMemory,
+            .child_scopes = std.StaticStringMap(GetInnerScopeFunc).init(child_kvs, a) catch return error.OutOfMemory,
+        };
         return self;
     }
-};
 
-fn walkFields(
-    comptime Root: type,
-    comptime T: type,
-    comptime prefix: []const u8,
-    comptime emit: fn (
-        comptime full_path: []const u8,
-        comptime owner_type: type,
-        comptime field_name: []const u8,
-    ) void,
-) void {
-    switch (@typeInfo(T)) {
-        .@"struct" => |st| {
-            inline for (st.fields) |f| {
-                const full = std.fmt.comptimePrint("{s}.{s}", .{ prefix, f.name });
-
-                emit(full, T, f.name);
-
-                walkFields(
-                    Root,
-                    f.type,
-                    full,
-                    emit,
-                );
-            }
-        },
-        .pointer => |p| if (p.size == .one)
-            walkFields(Root, p.child, prefix, emit),
-        .array => |a| walkFields(Root, a.child, prefix, emit),
-        else => {},
+    pub fn deinit(self: @This(), a: Allocator) void {
+        self.access_map.deinit(a);
+        self.child_scopes.deinit(a);
     }
-}
+};
