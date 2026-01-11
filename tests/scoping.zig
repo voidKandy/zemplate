@@ -60,7 +60,7 @@ test "scoping" {
     }.t);
     runTest("produces access functions correctly", accessMapKeysTest);
     runTest("produces child scopes correctly", childScopesKeysTest);
-    // runTest("access functions write correct values", accessFunctionTest);
+    runTest("child scopes work correctly", childScopeFunctionTest);
 }
 
 fn accessMapKeysTest() !void {
@@ -116,23 +116,22 @@ fn childScopesKeysTest() !void {
     if (scope.child_scopes.keys().len != expected_keys.len) return error.Failure;
 }
 
-fn accessFunctionTest() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const a = gpa.allocator();
-
+fn childScopeFunctionTest() !void {
     var value = makeTestValue();
-    const scope = try Scope.init(&value, a);
+    const scope = try Scope.init(&value, std.testing.allocator);
+    defer scope.deinit(std.testing.allocator);
 
-    var buffer: [128]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
-
-    // TODO:
-    // - lookup ".inner.string" in scope.access_map
-    // - call WriteAccessFunc
-    // - assert written output equals "hello"
-
-    _ = writer;
-    _ = scope;
+    std.log.err(
+        \\
+        \\OUTER SCOPE:
+        \\ {f}
+    , .{scope});
+    const getChild = scope.child_scopes.get(".inner").?;
+    const inner_scope = try getChild(std.testing.allocator, scope);
+    defer inner_scope.deinit(std.testing.allocator);
+    std.log.err(
+        \\
+        \\INNER SCOPE:
+        \\ {f}
+    , .{inner_scope});
 }

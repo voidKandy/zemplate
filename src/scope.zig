@@ -43,15 +43,28 @@ inline fn countPeriods(comptime string: []const u8) usize {
     inline for (string) |ch| {
         if (ch == '.') i += 1;
     }
+
+    if (i == 0) @compileError(comptimePrint("counting periods on invalid input: {s}", .{string}));
     return i;
 }
 
-inline fn idxLastPeriod(comptime string: []const u8) usize {
-    inline for (0..string.len) |i| {
-        const idx = string.len - 1 - i;
-        if (string[idx] == '.') return idx;
+inline fn periodIdcs(comptime string: []const u8) [countPeriods(string)]usize {
+    comptime var idcs: [countPeriods(string)]usize = undefined;
+    comptime var i: usize = 0;
+
+    inline for (string, 0..) |ch, k| {
+        if (ch == '.') {
+            idcs[i] = k;
+            i += 1;
+        }
     }
-    @panic("string contains no period");
+
+    if (i != countPeriods(string)) @compileError(comptimePrint(
+        \\ period count of '{s}' does not match indices gotten
+        \\ i != {d}
+    , .{ string, countPeriods(string) }));
+
+    return idcs;
 }
 
 const COMPILE_LOGS: bool = false;
@@ -60,41 +73,59 @@ inline fn compileLogPrint(comptime fmt: []const u8, args: anytype) void {
     if (COMPILE_LOGS) @compileLog(comptimePrint(fmt, args));
 }
 
+inline fn flattenScopeFunc(comptime Root: type, comptime basename: []const u8) GetInnerScopeFunc {
+    const amt_periods = countPeriods(basename);
+
+    if (amt_periods == 1)
+        return &struct {
+            fn call(
+                a: Allocator,
+                s: Scope,
+            ) error{OutOfMemory}!Scope {
+                const inst: *const Root = @ptrCast(@alignCast(s.instance));
+                const field = @field(inst, basename[1..]);
+                return Scope.init(&field, a);
+            }
+        }.call;
+
+    return &struct {
+        fn call(
+            a: Allocator,
+            s: Scope,
+        ) error{OutOfMemory}!Scope {
+            var scope = s;
+            var func: ?GetInnerScopeFunc = null;
+
+            comptime var Ty: type = Root;
+            const period_idcs = periodIdcs(basename);
+
+            inline for (0..amt_periods) |i| {
+                const start = period_idcs[i];
+
+                const end: ?usize = if (i + 1 >= amt_periods) null else period_idcs[i + 1];
+                const fieldname = if (end) |k| basename[start..k] else basename[start..];
+
+                func = flattenScopeFunc(Ty, fieldname);
+
+                scope = try func.?(a, s);
+                defer if (i < amt_periods) scope.deinit(a);
+
+                //when scope is constructed, it's new root is @FieldType(Ty, n)
+                Ty = @FieldType(Ty, fieldname[1..]);
+            }
+            return scope;
+        }
+    }.call;
+}
+
 inline fn childScopesKvs(comptime Root: type, comptime T: type, comptime basename: []const u8) [childScopesKvsCount(Root, T)]struct { []const u8, GetInnerScopeFunc } {
     compileLogPrint("GETTING KVS FOR {s} with {s}", .{ @typeName(T), basename });
 
-    const amt_periods = countPeriods(basename);
-    const idx_last_period = idxLastPeriod(basename);
     const call_base: ?GetInnerScopeFunc =
         if (basename.len == 1)
             null
-        else if (amt_periods == 1)
-            &struct {
-                fn call(
-                    a: Allocator,
-                    s: Scope,
-                ) error{OutOfMemory}!Scope {
-                    const inst: *const Root = @ptrCast(@alignCast(s.instance));
-                    const field = @field(inst, basename[1..]);
-                    return Scope.init(&field, a);
-                }
-            }.call
         else
-            &struct {
-                fn call(
-                    a: Allocator,
-                    s: Scope,
-                ) error{OutOfMemory}!Scope {
-                    const buildScopeFn = s.child_scopes.get(basename[0..idx_last_period]) orelse @panic(comptimePrint(
-                        \\ {s} has no entry
-                    , .{basename[0..idx_last_period]}));
-                    const scope = try buildScopeFn(a, s);
-                    const innerBuildScopeFn = scope.child_scopes.get(basename[idx_last_period..]) orelse @panic(comptimePrint(
-                        \\ {s} has no entry
-                    , .{basename[idx_last_period..]}));
-                    return try innerBuildScopeFn(a, scope);
-                }
-            }.call;
+            flattenScopeFunc(Root, basename);
 
     const OUT_SIZE = childScopesKvsCount(Root, T);
     const arr: [OUT_SIZE]struct { []const u8, GetInnerScopeFunc } = blk: {
@@ -222,6 +253,22 @@ pub const Scope = struct {
     access_map: std.StaticStringMap(WriteAccessFunc),
     child_scopes: std.StaticStringMap(GetInnerScopeFunc),
 
+    pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.writeAll("Access Map:");
+        for (self.access_map.keys()) |k| {
+            try writer.print(
+                \\
+                \\ '{s}'
+            , .{k});
+        }
+        try writer.writeAll("\nChild Scopes Map:");
+        for (self.child_scopes.keys()) |k| {
+            try writer.print(
+                \\
+                \\ '{s}'
+            , .{k});
+        }
+    }
     pub fn init(val: anytype, a: Allocator) error{OutOfMemory}!@This() {
         if (@typeInfo(@TypeOf(val)) != .pointer) @panic("NON POINTER TYPE PASSED TO FUNCTION");
         const DerefT = Deref(@TypeOf(val));
@@ -229,20 +276,9 @@ pub const Scope = struct {
         const child_kvs = childScopesKvs(DerefT, DerefT, ".");
 
         log.warn(
-            \\SCOPE FOR {s} INIT
+            \\ {s} SCOPE INIT
             \\
         , .{@typeName(DerefT)});
-        for (access_kvs) |k| {
-            log.warn(
-                \\Access K: '{s}'
-            , .{k.@"0"});
-        }
-        for (child_kvs) |k| {
-            log.warn(
-                \\Scope K: '{s}'
-            , .{k.@"0"});
-        }
-
         const self = @This(){
             .instance = @ptrCast(val),
             .access_map = std.StaticStringMap(WriteAccessFunc).init(access_kvs, a) catch return error.OutOfMemory,
