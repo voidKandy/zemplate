@@ -120,18 +120,25 @@ fn childScopeFunctionTest() !void {
     var value = makeTestValue();
     const scope = try Scope.init(&value, std.testing.allocator);
     defer scope.deinit(std.testing.allocator);
-
     std.log.err(
         \\
         \\OUTER SCOPE:
         \\ {f}
     , .{scope});
-    const getChild = scope.child_scopes.get(".inner").?;
-    const inner_scope = try getChild(std.testing.allocator, scope);
-    defer inner_scope.deinit(std.testing.allocator);
-    std.log.err(
-        \\
-        \\INNER SCOPE:
-        \\ {f}
-    , .{inner_scope});
+
+    for ([_][]const u8{
+        ".inner",
+        ".inner.other",
+        ".inner.other.numbers",
+    }) |n| {
+        const getChild = scope.child_scopes.get(n).?;
+        const inner_scope = try getChild(std.testing.allocator, scope);
+        defer inner_scope.deinit(std.testing.allocator);
+        std.log.err(
+            \\
+            \\INNER '{s}' SCOPE:
+            \\ {f}
+            \\
+        , .{ n, inner_scope });
+    }
 }

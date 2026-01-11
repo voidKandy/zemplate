@@ -103,15 +103,15 @@ inline fn flattenScopeFunc(comptime Root: type, comptime basename: []const u8) G
                 const start = period_idcs[i];
 
                 const end: ?usize = if (i + 1 >= amt_periods) null else period_idcs[i + 1];
-                const fieldname = if (end) |k| basename[start..k] else basename[start..];
+                const inner_basename = if (end) |k| basename[start..k] else basename[start..];
 
-                func = flattenScopeFunc(Ty, fieldname);
+                func = flattenScopeFunc(Ty, inner_basename);
 
                 scope = try func.?(a, s);
-                defer if (i < amt_periods) scope.deinit(a);
+                defer if (i < amt_periods - 1) scope.deinit(a);
 
                 //when scope is constructed, it's new root is @FieldType(Ty, n)
-                Ty = @FieldType(Ty, fieldname[1..]);
+                Ty = @FieldType(Ty, inner_basename[1..]);
             }
             return scope;
         }
