@@ -49,10 +49,10 @@ test "scoping" {
     }.t);
     runTest("child map count correct", struct {
         fn t() !void {
-            const n = zemplate.scope.childScopesKvsCount(Test);
-            if (n != 7) {
+            const n = zemplate.scope.childScopesKvsCount(Test, Test);
+            if (n != 6) {
                 std.log.err(
-                    \\ Expected 7 got: {d}
+                    \\ Expected 6 got: {d}
                 , .{n});
                 return error.Failure;
             }

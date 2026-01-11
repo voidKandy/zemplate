@@ -20,14 +20,14 @@ const GetInnerScopeFunc = *const fn (
     Scope,
 ) error{OutOfMemory}!Scope;
 
-pub inline fn childScopesKvsCount(comptime T: type) usize {
+pub inline fn childScopesKvsCount(comptime Root: type, comptime T: type) usize {
     return switch (@typeInfo(T)) {
         .@"struct" => blk: {
-            comptime var i: usize = 1;
+            comptime var i: usize = if (T == Root) 0 else 1;
             inline for (@typeInfo(T).@"struct".fields) |f| {
                 // if (@typeInfo(f.type) == .@"struct") i += 1;
                 // i += 1;
-                const c = childScopesKvsCount(f.type);
+                const c = childScopesKvsCount(Root, f.type);
                 i += c;
             }
             break :blk i;
@@ -60,22 +60,14 @@ inline fn compileLogPrint(comptime fmt: []const u8, args: anytype) void {
     if (COMPILE_LOGS) @compileLog(comptimePrint(fmt, args));
 }
 
-inline fn childScopesKvs(comptime Root: type, comptime T: type, comptime basename: []const u8) [childScopesKvsCount(T)]struct { []const u8, GetInnerScopeFunc } {
+inline fn childScopesKvs(comptime Root: type, comptime T: type, comptime basename: []const u8) [childScopesKvsCount(Root, T)]struct { []const u8, GetInnerScopeFunc } {
     compileLogPrint("GETTING KVS FOR {s} with {s}", .{ @typeName(T), basename });
 
     const amt_periods = countPeriods(basename);
     const idx_last_period = idxLastPeriod(basename);
-    const call_base: GetInnerScopeFunc =
+    const call_base: ?GetInnerScopeFunc =
         if (basename.len == 1)
-            &struct {
-                fn call(
-                    a: Allocator,
-                    s: Scope,
-                ) error{OutOfMemory}!Scope {
-                    _ = a;
-                    return s;
-                }
-            }.call
+            null
         else if (amt_periods == 1)
             &struct {
                 fn call(
@@ -104,24 +96,26 @@ inline fn childScopesKvs(comptime Root: type, comptime T: type, comptime basenam
                 }
             }.call;
 
-    const OUT_SIZE = childScopesKvsCount(T);
+    const OUT_SIZE = childScopesKvsCount(Root, T);
     const arr: [OUT_SIZE]struct { []const u8, GetInnerScopeFunc } = blk: {
         var tmp: [OUT_SIZE]struct { []const u8, GetInnerScopeFunc } = undefined;
         if (OUT_SIZE == 0) break :blk tmp;
+        if (call_base) |bs| {
+            tmp[0] = .{
+                basename, bs,
+            };
+        }
 
-        tmp[0] = .{
-            basename, call_base,
-        };
         const info = @typeInfo(T);
         switch (info) {
             .pointer, .array => break :blk tmp,
             else => {},
         }
 
-        var i: usize = 1;
+        var i: usize = if (call_base != null) 1 else 0;
         inline for (info.@"struct".fields) |f| {
             compileLogPrint("FIELD: {s}", .{f.name});
-            const expected_size = childScopesKvsCount(f.type);
+            const expected_size = childScopesKvsCount(Root, f.type);
             if (expected_size == 0) {
                 compileLogPrint("SIZE == 0", .{});
                 continue;
