@@ -143,7 +143,7 @@ inline fn childScopesKvs(comptime Root: type, comptime T: type, comptime basenam
             else => {},
         }
 
-        var i: usize = if (call_base != null) 1 else 0;
+        comptime var i: usize = if (call_base != null) 1 else 0;
         inline for (info.@"struct".fields) |f| {
             compileLogPrint("FIELD: {s}", .{f.name});
             const expected_size = childScopesKvsCount(Root, f.type);
@@ -167,6 +167,11 @@ inline fn childScopesKvs(comptime Root: type, comptime T: type, comptime basenam
                 i += 1;
             }
         }
+
+        if (i != OUT_SIZE) @compileError(comptimePrint(
+            \\ entry count of of {s} does not match expected
+            \\ i != {d}
+        , .{ @typeName(T), OUT_SIZE }));
 
         break :blk tmp;
     };
