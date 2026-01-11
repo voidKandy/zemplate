@@ -59,7 +59,7 @@ test "scoping" {
         }
     }.t);
     runTest("produces access functions correctly", accessMapKeysTest);
-    // runTest("produces child scopes correctly", childScopesTest);
+    runTest("produces child scopes correctly", childScopesKeysTest);
     // runTest("access functions write correct values", accessFunctionTest);
 }
 
@@ -87,22 +87,33 @@ fn accessMapKeysTest() !void {
             return error.Failure;
         }
     }
+    if (scope.access_map.keys().len != expected_keys.len) return error.Failure;
 }
 
-fn childScopesTest() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const a = gpa.allocator();
-
+fn childScopesKeysTest() !void {
     var value = makeTestValue();
-    const scope = try Scope.init(&value, a);
+    const scope = try Scope.init(&value, std.testing.allocator);
+    defer scope.deinit(std.testing.allocator);
 
-    // TODO:
-    // - lookup ".inner" in scope.child_scopes
-    // - call returned GetInnerScopeFunc
-    // - assert returned scope has ".string" access
+    const expected_keys = &[_][]const u8{
+        ".inner",
+        ".arr",
+        ".others",
+        ".inner.string",
+        ".inner.other",
+        ".inner.other.numbers",
+    };
 
-    _ = scope;
+    for (expected_keys) |k| {
+        if (scope.child_scopes.get(k) == null) {
+            std.log.err(
+                \\ KEY: {s} NOT PRESENT
+            , .{k});
+            return error.Failure;
+        }
+    }
+
+    if (scope.child_scopes.keys().len != expected_keys.len) return error.Failure;
 }
 
 fn accessFunctionTest() !void {
