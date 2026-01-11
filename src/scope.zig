@@ -4,6 +4,7 @@ const root = @import("root.zig");
 const util = @import("util.zig");
 const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.scope);
+const comptimePrint = std.fmt.comptimePrint;
 const renderStatement = @import("render_context.zig").renderStatement;
 const Error = root.Error;
 
@@ -19,94 +20,132 @@ const GetInnerScopeFunc = *const fn (
     Scope,
 ) error{OutOfMemory}!Scope;
 
-inline fn childScopesKvs(comptime T: type) []const struct { []const u8, GetInnerScopeFunc } {
-    const CallFunc = struct {
-        fn getFunc(
-            comptime Type: type,
-            comptime field_name: []const u8,
-        ) GetInnerScopeFunc {
-            return &struct {
+pub inline fn childScopesKvsCount(comptime T: type) usize {
+    return switch (@typeInfo(T)) {
+        .@"struct" => blk: {
+            comptime var i: usize = 1;
+            inline for (@typeInfo(T).@"struct".fields) |f| {
+                // if (@typeInfo(f.type) == .@"struct") i += 1;
+                // i += 1;
+                const c = childScopesKvsCount(f.type);
+                i += c;
+            }
+            break :blk i;
+        },
+        .pointer, .array => 1,
+        else => 0,
+    };
+}
+
+inline fn countPeriods(comptime string: []const u8) usize {
+    comptime var i: usize = 0;
+
+    inline for (string) |ch| {
+        if (ch == '.') i += 1;
+    }
+    return i;
+}
+
+inline fn idxLastPeriod(comptime string: []const u8) usize {
+    inline for (0..string.len) |i| {
+        const idx = string.len - 1 - i;
+        if (string[idx] == '.') return idx;
+    }
+    @panic("string contains no period");
+}
+
+const COMPILE_LOGS: bool = false;
+
+inline fn compileLogPrint(comptime fmt: []const u8, args: anytype) void {
+    if (COMPILE_LOGS) @compileLog(comptimePrint(fmt, args));
+}
+
+inline fn childScopesKvs(comptime Root: type, comptime T: type, comptime basename: []const u8) [childScopesKvsCount(T)]struct { []const u8, GetInnerScopeFunc } {
+    compileLogPrint("GETTING KVS FOR {s} with {s}", .{ @typeName(T), basename });
+
+    const amt_periods = countPeriods(basename);
+    const idx_last_period = idxLastPeriod(basename);
+    const call_base: GetInnerScopeFunc =
+        if (basename.len == 1)
+            &struct {
                 fn call(
                     a: Allocator,
                     s: Scope,
                 ) error{OutOfMemory}!Scope {
-                    const inst: *const Type = @ptrCast(@alignCast(s.instance));
-                    const field = @field(inst, field_name);
+                    _ = a;
+                    return s;
+                }
+            }.call
+        else if (amt_periods == 1)
+            &struct {
+                fn call(
+                    a: Allocator,
+                    s: Scope,
+                ) error{OutOfMemory}!Scope {
+                    const inst: *const Root = @ptrCast(@alignCast(s.instance));
+                    const field = @field(inst, basename[1..]);
                     return Scope.init(&field, a);
                 }
+            }.call
+        else
+            &struct {
+                fn call(
+                    a: Allocator,
+                    s: Scope,
+                ) error{OutOfMemory}!Scope {
+                    const buildScopeFn = s.child_scopes.get(basename[0..idx_last_period]) orelse @panic(comptimePrint(
+                        \\ {s} has no entry
+                    , .{basename[0..idx_last_period]}));
+                    const scope = try buildScopeFn(a, s);
+                    const innerBuildScopeFn = scope.child_scopes.get(basename[idx_last_period..]) orelse @panic(comptimePrint(
+                        \\ {s} has no entry
+                    , .{basename[idx_last_period..]}));
+                    return try innerBuildScopeFn(a, scope);
+                }
             }.call;
+
+    const OUT_SIZE = childScopesKvsCount(T);
+    const arr: [OUT_SIZE]struct { []const u8, GetInnerScopeFunc } = blk: {
+        var tmp: [OUT_SIZE]struct { []const u8, GetInnerScopeFunc } = undefined;
+        if (OUT_SIZE == 0) break :blk tmp;
+
+        tmp[0] = .{
+            basename, call_base,
+        };
+        const info = @typeInfo(T);
+        switch (info) {
+            .pointer, .array => break :blk tmp,
+            else => {},
         }
+
+        var i: usize = 1;
+        inline for (info.@"struct".fields) |f| {
+            compileLogPrint("FIELD: {s}", .{f.name});
+            const expected_size = childScopesKvsCount(f.type);
+            if (expected_size == 0) {
+                compileLogPrint("SIZE == 0", .{});
+                continue;
+            }
+
+            const nested_basename = if (basename.len == 1)
+                comptimePrint("{s}{s}", .{ basename, f.name })
+            else
+                comptimePrint("{s}.{s}", .{ basename, f.name });
+
+            const entries = childScopesKvs(Root, f.type, nested_basename);
+
+            inline for (entries) |kv| {
+                tmp[i] = .{
+                    kv.@"0",
+                    kv.@"1",
+                };
+                i += 1;
+            }
+        }
+
+        break :blk tmp;
     };
-
-    switch (@typeInfo(T)) {
-        .@"struct" => {
-            const FIELDS = @typeInfo(T).@"struct".fields;
-
-            const N_FIELDS = blk: {
-                comptime var i: usize = 0;
-                inline for (FIELDS) |f| {
-                    switch (@typeInfo(f.type)) {
-                        .@"struct" => |st| {
-                            i += st.fields.len;
-                            i += 1;
-                        },
-                        .pointer, .array => {
-                            i += 1;
-                        },
-                        else => {},
-                    }
-                }
-                break :blk i;
-            };
-
-            const arr: [N_FIELDS]struct { []const u8, GetInnerScopeFunc } = blk: {
-                var tmp: [N_FIELDS]struct { []const u8, GetInnerScopeFunc } = undefined;
-                if (N_FIELDS == 0) return &tmp;
-                var i: usize = 0;
-                inline for (FIELDS) |f| {
-                    const field_info = @typeInfo(f.type);
-
-                    switch (field_info) {
-                        .@"struct", .pointer, .array => {},
-                        else => continue,
-                    }
-
-                    tmp[i] = .{
-                        std.fmt.comptimePrint(".{s}", .{f.name}),
-                        CallFunc.getFunc(T, f.name),
-                    };
-                    i += 1;
-
-                    if (field_info != .@"struct") continue;
-
-                    inline for (field_info.@"struct".fields) |fld| {
-                        tmp[i] = .{
-                            std.fmt.comptimePrint(".{s}.{s}", .{ f.name, fld.name }),
-                            // &struct {
-                            //     fn call(
-                            //         a: Allocator,
-                            //         o: *anyopaque,
-                            //     ) error{OutOfMemory}!Scope {
-                            //         const inst: *T = @ptrCast(@alignCast(o));
-                            //         const field = @field(inst, f.name);
-                            //         const nested_field = @field(field, fld.name);
-                            //         CallFunc.getFunc(@TypeOf(field), fld.name)(nested_field, a);
-                            //     }
-                            // }.call,
-                            CallFunc.getFunc(f.type, fld.name),
-                        };
-
-                        i += 1;
-                    }
-                }
-                break :blk tmp;
-            };
-
-            return &arr;
-        },
-
-        else => return &[_]struct { []const u8, GetInnerScopeFunc }{},
-    }
+    return arr;
 }
 
 const WriteAccessFunc = *const fn (
@@ -135,7 +174,7 @@ pub inline fn accessMapKvsCount(comptime T: type) usize {
 }
 
 inline fn accessMapKvs(comptime T: type, comptime basename: []const u8) [accessMapKvsCount(T)]struct { []const u8, WriteAccessFunc } {
-    const render_base: WriteAccessFunc = &struct {
+    const access_base: WriteAccessFunc = &struct {
         fn call(
             w: *std.Io.Writer,
             s: Scope,
@@ -157,14 +196,14 @@ inline fn accessMapKvs(comptime T: type, comptime basename: []const u8) [accessM
                 var tmp: [OUT_SIZE]struct { []const u8, WriteAccessFunc } = undefined;
                 tmp[0] = .{
                     basename,
-                    render_base,
+                    access_base,
                 };
                 var i: usize = 1;
                 inline for (FIELDS) |f| {
                     const name = if (basename.len == 1)
-                        std.fmt.comptimePrint("{s}{s}", .{ basename, f.name })
+                        comptimePrint("{s}{s}", .{ basename, f.name })
                     else
-                        std.fmt.comptimePrint("{s}.{s}", .{ basename, f.name });
+                        comptimePrint("{s}.{s}", .{ basename, f.name });
 
                     const entries = accessMapKvs(f.type, name);
                     inline for (entries) |kv| {
@@ -180,7 +219,7 @@ inline fn accessMapKvs(comptime T: type, comptime basename: []const u8) [accessM
 
             return arr;
         },
-        else => return [1]struct { []const u8, WriteAccessFunc }{.{ basename, render_base }},
+        else => return [1]struct { []const u8, WriteAccessFunc }{.{ basename, access_base }},
     }
 }
 
@@ -193,10 +232,11 @@ pub const Scope = struct {
         if (@typeInfo(@TypeOf(val)) != .pointer) @panic("NON POINTER TYPE PASSED TO FUNCTION");
         const DerefT = Deref(@TypeOf(val));
         const access_kvs = accessMapKvs(DerefT, ".");
-        const child_kvs = childScopesKvs(DerefT);
+        const child_kvs = childScopesKvs(DerefT, DerefT, ".");
 
         log.warn(
             \\SCOPE FOR {s} INIT
+            \\
         , .{@typeName(DerefT)});
         for (access_kvs) |k| {
             log.warn(

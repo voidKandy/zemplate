@@ -47,6 +47,17 @@ test "scoping" {
             }
         }
     }.t);
+    runTest("child map count correct", struct {
+        fn t() !void {
+            const n = zemplate.scope.childScopesKvsCount(Test);
+            if (n != 7) {
+                std.log.err(
+                    \\ Expected 7 got: {d}
+                , .{n});
+                return error.Failure;
+            }
+        }
+    }.t);
     runTest("produces access functions correctly", accessMapKeysTest);
     // runTest("produces child scopes correctly", childScopesTest);
     // runTest("access functions write correct values", accessFunctionTest);

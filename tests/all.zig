@@ -3,8 +3,8 @@ comptime {
     _ = @import("conditional.zig");
     _ = @import("lexing.zig");
     _ = @import("parsing.zig");
-    _ = @import("rendering.zig");
     _ = @import("scoping.zig");
+    // _ = @import("rendering.zig");
 }
 
 const std = @import("std");
