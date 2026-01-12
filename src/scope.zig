@@ -37,52 +37,66 @@ pub inline fn childScopesKvsCount(comptime Root: type, comptime T: type) usize {
     };
 }
 
-inline fn countPeriods(comptime string: []const u8) usize {
-    comptime var i: usize = 0;
+inline fn childScopesKvs(
+    comptime Root: type,
+    comptime T: type,
+    comptime basename: []const u8,
+) [childScopesKvsCount(Root, T)]struct { []const u8, GetInnerScopeFunc } {
+    util.compileLogPrint("GETTING KVS FOR {s} with {s}", .{ @typeName(T), basename });
 
-    inline for (string) |ch| {
-        if (ch == '.') i += 1;
-    }
-
-    if (i == 0) @compileError(comptimePrint("counting periods on invalid input: {s}", .{string}));
-    return i;
-}
-
-inline fn periodIdcs(comptime string: []const u8) [countPeriods(string)]usize {
-    comptime var idcs: [countPeriods(string)]usize = undefined;
-    comptime var i: usize = 0;
-
-    inline for (string, 0..) |ch, k| {
-        if (ch == '.') {
-            idcs[i] = k;
-            i += 1;
+    const OUT_SIZE = childScopesKvsCount(Root, T);
+    const arr: [OUT_SIZE]struct { []const u8, GetInnerScopeFunc } = comptime blk: {
+        var tmp: [OUT_SIZE]struct { []const u8, GetInnerScopeFunc } = undefined;
+        if (OUT_SIZE == 0) break :blk tmp;
+        if (basename.len > 1) {
+            tmp[0] = .{
+                basename,
+                flattenFunctionChain(
+                    &buildScopeWalkerFunctionChain(Root, basename),
+                ),
+            };
         }
-    }
 
-    if (i != countPeriods(string)) @compileError(comptimePrint(
-        \\ period count of '{s}' does not match indices gotten
-        \\ i != {d}
-    , .{ string, countPeriods(string) }));
+        const info = @typeInfo(T);
+        switch (info) {
+            .pointer, .array => break :blk tmp,
+            else => {},
+        }
 
-    return idcs;
+        var i: usize = if (basename.len > 1) 1 else 0;
+        for (info.@"struct".fields) |f| {
+            util.compileLogPrint("FIELD: {s}", .{f.name});
+
+            const expected_size = childScopesKvsCount(Root, f.type);
+            if (expected_size == 0) {
+                util.compileLogPrint("SIZE == 0", .{});
+                continue;
+            }
+
+            const nested_basename = if (basename.len == 1)
+                comptimePrint("{s}{s}", .{ basename, f.name })
+            else
+                comptimePrint("{s}.{s}", .{ basename, f.name });
+
+            const nested = childScopesKvs(Root, f.type, nested_basename);
+            for (nested) |kv| {
+                tmp[i] = kv;
+                i += 1;
+            }
+        }
+
+        if (i != OUT_SIZE) @compileError(comptimePrint(
+            \\ entry count of of {s} does not match expected
+            \\ i != {d}
+        , .{ @typeName(T), OUT_SIZE }));
+
+        break :blk tmp;
+    };
+    return arr;
 }
 
-const COMPILE_LOGS: bool = false;
-
-inline fn compileLogPrint(comptime fmt: []const u8, args: anytype) void {
-    if (COMPILE_LOGS) @compileLog(comptimePrint(fmt, args));
-}
-
-inline fn hasField(comptime T: type, comptime name: []const u8) bool {
-    if (@typeInfo(T) != .@"struct") return false;
-    inline for (@typeInfo(T).@"struct".fields) |f| if (util.sliceEqualComptime(f.name, name)) return true;
-
-    compileLogPrint("{s} does not have field {s}", .{ @typeName(T), name });
-    return false;
-}
-
-inline fn basenameToFields(comptime basename: []const u8) [countPeriods(basename)][]const u8 {
-    comptime var fields: [countPeriods(basename)][]const u8 = undefined;
+inline fn basenameToFields(comptime basename: []const u8) [util.countPeriods(basename)][]const u8 {
+    comptime var fields: [util.countPeriods(basename)][]const u8 = undefined;
     comptime var last = 1;
     comptime var k = 0;
     inline for (basename, 0..) |ch, i| {
@@ -100,9 +114,9 @@ inline fn basenameToFields(comptime basename: []const u8) [countPeriods(basename
         k += 1;
     }
 
-    if (k != countPeriods(basename)) @compileError(comptimePrint(
+    if (k != util.countPeriods(basename)) @compileError(comptimePrint(
         \\ Expected to have array of {d} fields got {d} for '{s}'
-    , .{ countPeriods(basename), k, basename }));
+    , .{ util.countPeriods(basename), k, basename }));
 
     return fields;
 }
@@ -125,9 +139,9 @@ inline fn buildChainItem(
 inline fn buildScopeWalkerFunctionChain(
     comptime Root: type,
     comptime basename: []const u8,
-) [countPeriods(basename)]GetInnerScopeFunc {
+) [util.countPeriods(basename)]GetInnerScopeFunc {
     const fields = comptime basenameToFields(basename);
-    comptime var funcs: [countPeriods(basename)]GetInnerScopeFunc = undefined;
+    comptime var funcs: [util.countPeriods(basename)]GetInnerScopeFunc = undefined;
 
     comptime var Ty: type = Root;
     inline for (fields, 0..) |name, i| {
@@ -153,64 +167,6 @@ inline fn flattenFunctionChain(
             return sc;
         }
     }.call;
-}
-
-inline fn childScopesKvs(
-    comptime Root: type,
-    comptime T: type,
-    comptime basename: []const u8,
-) [childScopesKvsCount(Root, T)]struct { []const u8, GetInnerScopeFunc } {
-    compileLogPrint("GETTING KVS FOR {s} with {s}", .{ @typeName(T), basename });
-
-    const OUT_SIZE = childScopesKvsCount(Root, T);
-    const arr: [OUT_SIZE]struct { []const u8, GetInnerScopeFunc } = comptime blk: {
-        var tmp: [OUT_SIZE]struct { []const u8, GetInnerScopeFunc } = undefined;
-        if (OUT_SIZE == 0) break :blk tmp;
-        if (basename.len > 1) {
-            tmp[0] = .{
-                basename,
-                flattenFunctionChain(
-                    &buildScopeWalkerFunctionChain(Root, basename),
-                ),
-            };
-        }
-
-        const info = @typeInfo(T);
-        switch (info) {
-            .pointer, .array => break :blk tmp,
-            else => {},
-        }
-
-        var i: usize = if (basename.len > 1) 1 else 0;
-        for (info.@"struct".fields) |f| {
-            compileLogPrint("FIELD: {s}", .{f.name});
-
-            const expected_size = childScopesKvsCount(Root, f.type);
-            if (expected_size == 0) {
-                compileLogPrint("SIZE == 0", .{});
-                continue;
-            }
-
-            const nested_basename = if (basename.len == 1)
-                comptimePrint("{s}{s}", .{ basename, f.name })
-            else
-                comptimePrint("{s}.{s}", .{ basename, f.name });
-
-            const nested = childScopesKvs(Root, f.type, nested_basename);
-            for (nested) |kv| {
-                tmp[i] = kv;
-                i += 1;
-            }
-        }
-
-        if (i != OUT_SIZE) @compileError(comptimePrint(
-            \\ entry count of of {s} does not match expected
-            \\ i != {d}
-        , .{ @typeName(T), OUT_SIZE }));
-
-        break :blk tmp;
-    };
-    return arr;
 }
 
 const WriteAccessFunc = *const fn (

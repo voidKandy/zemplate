@@ -4,7 +4,51 @@ const ArrayList = std.ArrayList;
 const log = std.log.scoped(.util);
 const Error = @import("root.zig").Error;
 const JsonOptions = std.json.Stringify.Options;
+const comptimePrint = std.fmt.comptimePrint;
 
+const COMPILE_LOGS: bool = false;
+
+pub inline fn countPeriods(comptime string: []const u8) usize {
+    comptime var i: usize = 0;
+
+    inline for (string) |ch| {
+        if (ch == '.') i += 1;
+    }
+
+    if (i == 0) @compileError(comptimePrint("counting periods on invalid input: {s}", .{string}));
+    return i;
+}
+
+pub inline fn periodIdcs(comptime string: []const u8) [countPeriods(string)]usize {
+    comptime var idcs: [countPeriods(string)]usize = undefined;
+    comptime var i: usize = 0;
+
+    inline for (string, 0..) |ch, k| {
+        if (ch == '.') {
+            idcs[i] = k;
+            i += 1;
+        }
+    }
+
+    if (i != countPeriods(string)) @compileError(comptimePrint(
+        \\ period count of '{s}' does not match indices gotten
+        \\ i != {d}
+    , .{ string, countPeriods(string) }));
+
+    return idcs;
+}
+
+pub inline fn compileLogPrint(comptime fmt: []const u8, args: anytype) void {
+    if (COMPILE_LOGS) @compileLog(comptimePrint(fmt, args));
+}
+
+pub inline fn hasField(comptime T: type, comptime name: []const u8) bool {
+    if (@typeInfo(T) != .@"struct") return false;
+    inline for (@typeInfo(T).@"struct".fields) |f| if (sliceEqualComptime(f.name, name)) return true;
+
+    compileLogPrint("{s} does not have field {s}", .{ @typeName(T), name });
+    return false;
+}
 /// using std.mem.eql on two comptime strings can sometimes return false positives
 pub inline fn sliceEqualComptime(comptime a: []const u8, comptime b: []const u8) bool {
     if (a.len != b.len) return false;
