@@ -65,7 +65,7 @@ test "scoping" {
 
 fn accessMapKeysTest() !void {
     var value = makeTestValue();
-    const scope = try Scope.init(&value, std.testing.allocator);
+    const scope = try Scope.init(Test, &value, std.testing.allocator);
     defer scope.deinit(std.testing.allocator);
 
     const expected_keys = &[_][]const u8{
@@ -92,7 +92,7 @@ fn accessMapKeysTest() !void {
 
 fn childScopesKeysTest() !void {
     var value = makeTestValue();
-    const scope = try Scope.init(&value, std.testing.allocator);
+    const scope = try Scope.init(Test, &value, std.testing.allocator);
     defer scope.deinit(std.testing.allocator);
 
     const expected_keys = &[_][]const u8{
@@ -118,7 +118,7 @@ fn childScopesKeysTest() !void {
 
 fn childScopeFunctionTest() !void {
     var value = makeTestValue();
-    const scope = try Scope.init(&value, std.testing.allocator);
+    const scope = try Scope.init(Test, &value, std.testing.allocator);
     defer scope.deinit(std.testing.allocator);
     std.log.err(
         \\

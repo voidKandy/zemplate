@@ -73,67 +73,105 @@ inline fn compileLogPrint(comptime fmt: []const u8, args: anytype) void {
     if (COMPILE_LOGS) @compileLog(comptimePrint(fmt, args));
 }
 
-inline fn flattenScopeFunc(comptime Root: type, comptime basename: []const u8) GetInnerScopeFunc {
-    const amt_periods = countPeriods(basename);
+inline fn hasField(comptime T: type, comptime name: []const u8) bool {
+    if (@typeInfo(T) != .@"struct") return false;
+    inline for (@typeInfo(T).@"struct".fields) |f| if (util.sliceEqualComptime(f.name, name)) return true;
 
-    if (amt_periods == 1)
-        return &struct {
-            fn call(
-                a: Allocator,
-                s: Scope,
-            ) error{OutOfMemory}!Scope {
-                const inst: *const Root = @ptrCast(@alignCast(s.instance));
-                const field = @field(inst, basename[1..]);
-                return Scope.init(&field, a);
-            }
-        }.call;
+    compileLogPrint("{s} does not have field {s}", .{ @typeName(T), name });
+    return false;
+}
 
+inline fn basenameToFields(comptime basename: []const u8) [countPeriods(basename)][]const u8 {
+    comptime var fields: [countPeriods(basename)][]const u8 = undefined;
+    comptime var last = 1;
+    comptime var k = 0;
+    inline for (basename, 0..) |ch, i| {
+        if (ch == '.') {
+            if (i > last) {
+                fields[k] = basename[last..i];
+                k += 1;
+                last = i + 1;
+            } else last = i + 1;
+        }
+    }
+
+    if (last < basename.len) {
+        fields[k] = basename[last..];
+        k += 1;
+    }
+
+    if (k != countPeriods(basename)) @compileError(comptimePrint(
+        \\ Expected to have array of {d} fields got {d} for '{s}'
+    , .{ countPeriods(basename), k, basename }));
+
+    return fields;
+}
+
+inline fn buildChainItem(
+    comptime T: type,
+    comptime fieldname: []const u8,
+) GetInnerScopeFunc {
     return &struct {
-        fn call(
-            a: Allocator,
-            s: Scope,
-        ) error{OutOfMemory}!Scope {
-            var scope = s;
-            var func: ?GetInnerScopeFunc = null;
+        fn call(a: Allocator, s: Scope) error{OutOfMemory}!Scope {
+            const inst: *const T = @ptrCast(@alignCast(s.instance));
+            const field = @field(inst, fieldname);
 
-            comptime var Ty: type = Root;
-            const period_idcs = periodIdcs(basename);
-
-            inline for (0..amt_periods) |i| {
-                const start = period_idcs[i];
-
-                const end: ?usize = if (i + 1 >= amt_periods) null else period_idcs[i + 1];
-                const inner_basename = if (end) |k| basename[start..k] else basename[start..];
-
-                func = flattenScopeFunc(Ty, inner_basename);
-
-                scope = try func.?(a, s);
-                defer if (i < amt_periods - 1) scope.deinit(a);
-
-                //when scope is constructed, it's new root is @FieldType(Ty, n)
-                Ty = @FieldType(Ty, inner_basename[1..]);
-            }
+            const scope = try Scope.init(@FieldType(T, fieldname), &field, a);
             return scope;
         }
     }.call;
 }
 
-inline fn childScopesKvs(comptime Root: type, comptime T: type, comptime basename: []const u8) [childScopesKvsCount(Root, T)]struct { []const u8, GetInnerScopeFunc } {
+inline fn buildScopeWalkerFunctionChain(
+    comptime Root: type,
+    comptime basename: []const u8,
+) [countPeriods(basename)]GetInnerScopeFunc {
+    const fields = comptime basenameToFields(basename);
+    comptime var funcs: [countPeriods(basename)]GetInnerScopeFunc = undefined;
+
+    comptime var Ty: type = Root;
+    inline for (fields, 0..) |name, i| {
+        funcs[i] = buildChainItem(Ty, name);
+        Ty = @FieldType(Ty, name);
+    }
+    return funcs;
+}
+
+inline fn flattenFunctionChain(
+    comptime funcs: []const GetInnerScopeFunc,
+) GetInnerScopeFunc {
+    return &struct {
+        fn call(
+            a: Allocator,
+            s: Scope,
+        ) error{OutOfMemory}!Scope {
+            var sc: Scope = s;
+            inline for (funcs, 0..) |f, i| {
+                sc = try f(a, sc);
+                defer if (i < funcs.len - 1) sc.deinit(a);
+            }
+            return sc;
+        }
+    }.call;
+}
+
+inline fn childScopesKvs(
+    comptime Root: type,
+    comptime T: type,
+    comptime basename: []const u8,
+) [childScopesKvsCount(Root, T)]struct { []const u8, GetInnerScopeFunc } {
     compileLogPrint("GETTING KVS FOR {s} with {s}", .{ @typeName(T), basename });
 
-    const call_base: ?GetInnerScopeFunc =
-        if (basename.len == 1)
-            null
-        else
-            flattenScopeFunc(Root, basename);
-
     const OUT_SIZE = childScopesKvsCount(Root, T);
-    const arr: [OUT_SIZE]struct { []const u8, GetInnerScopeFunc } = blk: {
+    const arr: [OUT_SIZE]struct { []const u8, GetInnerScopeFunc } = comptime blk: {
         var tmp: [OUT_SIZE]struct { []const u8, GetInnerScopeFunc } = undefined;
         if (OUT_SIZE == 0) break :blk tmp;
-        if (call_base) |bs| {
+        if (basename.len > 1) {
             tmp[0] = .{
-                basename, bs,
+                basename,
+                flattenFunctionChain(
+                    &buildScopeWalkerFunctionChain(Root, basename),
+                ),
             };
         }
 
@@ -143,9 +181,10 @@ inline fn childScopesKvs(comptime Root: type, comptime T: type, comptime basenam
             else => {},
         }
 
-        comptime var i: usize = if (call_base != null) 1 else 0;
-        inline for (info.@"struct".fields) |f| {
+        var i: usize = if (basename.len > 1) 1 else 0;
+        for (info.@"struct".fields) |f| {
             compileLogPrint("FIELD: {s}", .{f.name});
+
             const expected_size = childScopesKvsCount(Root, f.type);
             if (expected_size == 0) {
                 compileLogPrint("SIZE == 0", .{});
@@ -157,13 +196,9 @@ inline fn childScopesKvs(comptime Root: type, comptime T: type, comptime basenam
             else
                 comptimePrint("{s}.{s}", .{ basename, f.name });
 
-            const entries = childScopesKvs(Root, f.type, nested_basename);
-
-            inline for (entries) |kv| {
-                tmp[i] = .{
-                    kv.@"0",
-                    kv.@"1",
-                };
+            const nested = childScopesKvs(Root, f.type, nested_basename);
+            for (nested) |kv| {
+                tmp[i] = kv;
                 i += 1;
             }
         }
@@ -274,11 +309,11 @@ pub const Scope = struct {
             , .{k});
         }
     }
-    pub fn init(val: anytype, a: Allocator) error{OutOfMemory}!@This() {
+    pub fn init(comptime Root: type, val: anytype, a: Allocator) error{OutOfMemory}!@This() {
         if (@typeInfo(@TypeOf(val)) != .pointer) @panic("NON POINTER TYPE PASSED TO FUNCTION");
         const DerefT = Deref(@TypeOf(val));
         const access_kvs = accessMapKvs(DerefT, ".");
-        const child_kvs = childScopesKvs(DerefT, DerefT, ".");
+        const child_kvs = childScopesKvs(Root, DerefT, ".");
 
         log.warn(
             \\ {s} SCOPE INIT

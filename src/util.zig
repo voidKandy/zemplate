@@ -6,10 +6,10 @@ const Error = @import("root.zig").Error;
 const JsonOptions = std.json.Stringify.Options;
 
 /// using std.mem.eql on two comptime strings can sometimes return false positives
-pub inline fn sliceEqualComptime(a: []const u8, b: []const u8) bool {
+pub inline fn sliceEqualComptime(comptime a: []const u8, comptime b: []const u8) bool {
     if (a.len != b.len) return false;
-    inline for (a, 0..) |c, i| {
-        if (c != b[i]) return false;
+    inline for (0..a.len) |i| {
+        if (a[i] != b[i]) return false;
     }
     return true;
 }
