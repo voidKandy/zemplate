@@ -2,18 +2,12 @@ const std = @import("std");
 const ast = @import("ast.zig");
 const root = @import("root.zig");
 const util = @import("util.zig");
+const Iterator = @import("Iterator.zig");
 const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.scope);
 const comptimePrint = std.fmt.comptimePrint;
-const renderStatement = @import("render_context.zig").renderStatement;
+const renderStatement = @import("render.zig").renderStatement;
 const Error = root.Error;
-
-fn Deref(comptime T: type) type {
-    switch (@typeInfo(T)) {
-        .pointer => |ptr| if (ptr.size == .one) return Deref(ptr.child) else return T,
-        else => return T,
-    }
-}
 
 const GetInnerScopeFunc = *const fn (
     Allocator,
@@ -250,133 +244,6 @@ pub const Scope = struct {
     access_map: std.StaticStringMap(WriteAccessFunc),
     child_scopes: std.StaticStringMap(GetInnerScopeFunc),
     iterateFunc: error{CannotIterate}!*const fn (@This()) Iterator,
-    // iterator: ?Iterator,
-
-    const Iterator = struct {
-        /// @argument1: `Scope.instance`
-        nextFunc: *const fn (*@This()) ?*const anyopaque,
-        /// @argument1: return value of `nextFunc`
-        /// @argument2: function pointer coerced to `*anyopaque`
-        /// @argument3: second argument of function coerced to `*anyopaque`
-        visitFunc: *const fn (Allocator, *const anyopaque, *const anyopaque, *anyopaque) Error!void,
-        idx: usize = 0,
-        base_ptr: usize,
-        len: usize,
-
-        pub fn next(self: *@This()) ?*const anyopaque {
-            return self.nextFunc(self);
-        }
-
-        pub fn visit(
-            self: @This(),
-            a: Allocator,
-            item: *const anyopaque,
-            func: anytype,
-            args: anytype,
-        ) Error!void {
-            return self.visitFunc(
-                a,
-                item,
-                @ptrCast(func),
-                @ptrCast(@constCast(args)),
-            );
-        }
-
-        inline fn ConcreteIteratorBuilder(
-            comptime T: type,
-        ) error{CannotIterate}!type {
-            const type_info = @typeInfo(T);
-            const ItemType = root.iterate.UnwrapIterableChild(T) orelse return error.CannotIterate;
-
-            return struct {
-                pub fn ptrInfo(ptr: *const anyopaque) struct {
-                    base_ptr: usize,
-                    len: usize,
-                } {
-                    switch (type_info) {
-                        .array => |ar| {
-                            // iter.ptr points to the array itself
-                            return .{
-                                .base_ptr = @intFromPtr(ptr),
-                                .len = ar.len,
-                            };
-                        },
-                        .pointer => |p| {
-                            switch (p.size) {
-                                .slice => {
-                                    // iter.ptr points to SLICE STRUCT, not data
-                                    const slice: *const T = @ptrCast(@alignCast(ptr));
-                                    return .{
-                                        .base_ptr = @intFromPtr(slice.ptr),
-                                        .len = slice.len,
-                                    };
-                                },
-                                else => {
-                                    log.err(
-                                        \\ No branch for pointer of size {s}
-                                    , .{@tagName(ptr.size)});
-                                    return null;
-                                },
-                            }
-                        },
-                        else => {
-                            log.err(
-                                \\ No branch for {s}
-                            , .{@tagName(type_info)});
-                            return null;
-                        },
-                    }
-                }
-                pub fn next(iter: *Scope.Iterator) ?*const anyopaque {
-                    log.warn("{s}", .{comptimePrint(
-                        \\ Calling {s} next with ItemType {s}
-                        \\
-                    , .{ @typeName(T), @typeName(ItemType) })});
-
-                    log.warn(
-                        \\LEN: {d}
-                    , .{iter.len});
-
-                    if (iter.idx >= iter.len) return null;
-
-                    // const v: *const T = @ptrCast(@alignCast(iter.ptr));
-                    // log.warn("v: {any}", .{v});
-                    // log.warn(
-                    //     \\ Coerced to {s}
-                    // , .{@typeName(T)});
-
-                    const item_ptr: *const anyopaque = @ptrFromInt(iter.base_ptr + iter.idx * @sizeOf(ItemType));
-
-                    const typed: *const ItemType =
-                        @ptrCast(@alignCast(item_ptr));
-                    // const item_ptr: *const anyopaque = typed;
-                    log.warn("got typed: {any}", .{typed});
-
-                    iter.idx += 1;
-
-                    log.warn(
-                        \\ got next: {any}
-                        \\ idx: {d}
-                    , .{ item_ptr, iter.idx });
-
-                    return item_ptr;
-                }
-
-                pub fn visit(
-                    a: Allocator,
-                    item: *const anyopaque,
-                    f: *const anyopaque,
-                    args: *anyopaque,
-                ) Error!void {
-                    const v: *const ItemType = @ptrCast(@alignCast(item));
-                    const scope = try Scope.init(ItemType, v, a);
-                    defer scope.deinit(a);
-                    const func: *const fn (Scope, *anyopaque) Error!void = @ptrCast(@alignCast(f));
-                    try func(scope, args);
-                }
-            };
-        }
-    };
 
     pub fn createIterator(self: @This()) error{CannotIterate}!Iterator {
         return (try self.iterateFunc)(self);
@@ -401,7 +268,7 @@ pub const Scope = struct {
 
     pub fn init(comptime Root: type, val: anytype, a: Allocator) error{OutOfMemory}!@This() {
         if (@typeInfo(@TypeOf(val)) != .pointer) @panic("NON POINTER TYPE PASSED TO FUNCTION");
-        const DerefT = Deref(@TypeOf(val));
+        const DerefT = util.Deref(@TypeOf(val));
         if (DerefT != Root) @panic("INVALID TYPE PASSED TO Scope.init");
 
         const access_kvs = accessMapKvs(DerefT, ".");
@@ -417,7 +284,7 @@ pub const Scope = struct {
             .access_map = std.StaticStringMap(WriteAccessFunc).init(access_kvs, a) catch return error.OutOfMemory,
             .child_scopes = std.StaticStringMap(GetInnerScopeFunc).init(child_kvs, a) catch return error.OutOfMemory,
             .iterateFunc = blk: {
-                const Builder = Iterator.ConcreteIteratorBuilder(Root) catch |e| break :blk e;
+                const Builder = Iterator.Builder(Root) catch |e| break :blk e;
                 break :blk &struct {
                     fn call(scope: Scope) Iterator {
                         const info = Builder.ptrInfo(scope.instance);

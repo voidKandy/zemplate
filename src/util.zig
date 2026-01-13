@@ -7,6 +7,16 @@ const JsonOptions = std.json.Stringify.Options;
 const comptimePrint = std.fmt.comptimePrint;
 
 const COMPILE_LOGS: bool = false;
+pub inline fn compileLogPrint(comptime fmt: []const u8, args: anytype) void {
+    if (COMPILE_LOGS) @compileLog(comptimePrint(fmt, args));
+}
+
+pub fn Deref(comptime T: type) type {
+    switch (@typeInfo(T)) {
+        .pointer => |ptr| if (ptr.size == .one) return Deref(ptr.child) else return T,
+        else => return T,
+    }
+}
 
 pub inline fn countPeriods(comptime string: []const u8) usize {
     comptime var i: usize = 0;
@@ -36,10 +46,6 @@ pub inline fn periodIdcs(comptime string: []const u8) [countPeriods(string)]usiz
     , .{ string, countPeriods(string) }));
 
     return idcs;
-}
-
-pub inline fn compileLogPrint(comptime fmt: []const u8, args: anytype) void {
-    if (COMPILE_LOGS) @compileLog(comptimePrint(fmt, args));
 }
 
 pub inline fn hasField(comptime T: type, comptime name: []const u8) bool {

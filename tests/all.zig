@@ -1,6 +1,4 @@
 comptime {
-    _ = @import("iterate.zig");
-    _ = @import("conditional.zig");
     _ = @import("lexing.zig");
     _ = @import("parsing.zig");
     _ = @import("scoping.zig");
