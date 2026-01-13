@@ -7,7 +7,6 @@ const runTest = @import("shared.zig").runTest;
 
 test "rendering" {
     runTest("Render For Loop", renderForLoopTest);
-    // runTest("some", iterationTest);
 }
 
 const allocator = std.testing.allocator;
@@ -53,8 +52,6 @@ fn renderForLoopTest() !void {
         };
     const scope = try zemplate.scope.Scope.init(Test, &t, a);
     defer scope.deinit(a);
-    // const Scope = try zemplate.scope.Scope(Test);
-    // const scope = Scope.init(t);
 
     try zemplate.render.renderStatement(
         a,
