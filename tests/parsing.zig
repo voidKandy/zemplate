@@ -160,9 +160,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                     }), .block = .{
                         .body = try a.dupe(ast.Statement, &[_]ast.Statement{
                             .{
-                                .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                            },
-                            .{
                                 .expression = try ast.ExpressionStatement.create(a, .{
                                     .access = .{
                                         .literal = try a.dupe(u8, "."),
@@ -184,9 +181,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                 }),
                                 .block = .{
                                     .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                                        .{
-                                            .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                                        },
                                         .{
                                             .expression = try ast.ExpressionStatement.create(a, .{
                                                 .access = .{
@@ -273,9 +267,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                     }, .block = .{
                         .body = try a.dupe(ast.Statement, &[_]ast.Statement{
                             .{
-                                .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                            },
-                            .{
                                 .expression = try ast.ExpressionStatement.create(a, .{
                                     .access = .{
                                         .literal = try a.dupe(u8, "."),
@@ -293,9 +284,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                 .condition = null,
                                 .block = .{
                                     .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                                        .{
-                                            .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                                        },
                                         .{
                                             .expression = try ast.ExpressionStatement.create(a, .{
                                                 .access = .{
@@ -342,11 +330,7 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                             },
                         }),
                         .block = .{
-                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                                .{
-                                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                                },
-                            }),
+                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{}),
                         },
                         .alternatives = null,
                     },
@@ -370,11 +354,7 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                             },
                         }),
                         .block = .{
-                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                                .{
-                                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                                },
-                            }),
+                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{}),
                         },
                         .alternatives = null,
                     },
@@ -400,11 +380,7 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                             },
                         }),
                         .block = .{
-                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                                .{
-                                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                                },
-                            }),
+                            .body = try a.dupe(ast.Statement, &[_]ast.Statement{}),
                         },
                         .alternatives = null,
                     },
@@ -432,9 +408,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                         .block = .{
                             .body = try a.dupe(ast.Statement, &[_]ast.Statement{
                                 .{
-                                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                                },
-                                .{
                                     .expression = try ast.ExpressionStatement.create(a, .{
                                         .access = .{
                                             .literal = try a.dupe(u8, "."),
@@ -453,9 +426,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                         }),
                                         .block = .{
                                             .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                                                .{
-                                                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                                                },
                                                 .{
                                                     .expression = try ast.ExpressionStatement.create(a, .{
                                                         .access = .{
@@ -478,6 +448,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                         },
                         .alternatives = null,
                     },
+                },
+                .{
+                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
                 },
             }),
         },
@@ -502,9 +475,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                         .block = .{
                             .body = try a.dupe(ast.Statement, &[_]ast.Statement{
                                 .{
-                                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                                },
-                                .{
                                     .expression = try ast.ExpressionStatement.create(a, .{
                                         .access = .{
                                             .literal = try a.dupe(u8, "."),
@@ -522,9 +492,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                         },
                                         .block = .{
                                             .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                                                .{
-                                                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                                                },
                                                 .{
                                                     .expression = try ast.ExpressionStatement.create(a, .{
                                                         .access = .{
@@ -576,9 +543,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                         .block = .{
                             .body = try a.dupe(ast.Statement, &[_]ast.Statement{
                                 .{
-                                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                                },
-                                .{
                                     .@"if" = .{
                                         // IF condition
                                         .condition = try ast.ExpressionStatement.create(a, .{
@@ -588,9 +552,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                         }),
                                         .block = .{
                                             .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                                                .{
-                                                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                                                },
                                                 .{
                                                     .expression = try ast.ExpressionStatement.create(a, .{
                                                         .access = .{
@@ -615,9 +576,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                                 .block = .{
                                                     .body = try a.dupe(ast.Statement, &[_]ast.Statement{
                                                         .{
-                                                            .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                                                        },
-                                                        .{
                                                             .expression = try ast.ExpressionStatement.create(a, .{
                                                                 .access = .{
                                                                     .literal = try a.dupe(u8, ".other"),
@@ -635,9 +593,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                                 .condition = null,
                                                 .block = .{
                                                     .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                                                        .{
-                                                            .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                                                        },
                                                         .{
                                                             .expression = try ast.ExpressionStatement.create(a, .{
                                                                 .access = .{
@@ -665,9 +620,6 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
                                 .condition = null,
                                 .block = .{
                                     .body = try a.dupe(ast.Statement, &[_]ast.Statement{
-                                        .{
-                                            .literal = ast.LiteralStatement{ .content = try a.dupe(u8, "\n ") },
-                                        },
                                         .{
                                             .expression = try ast.ExpressionStatement.create(a, .{
                                                 .access = .{

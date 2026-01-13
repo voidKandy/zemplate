@@ -274,8 +274,12 @@ fn parseElseBlock(self: *Self, if_or_for: enum { @"if", @"for" }) ParseError!?as
             , .{});
             return null;
         };
-        try body.append(self.arena.allocator(), statement);
-        // self.progressTokenSkipWhitespace();
+        if (append: {
+            // literals are only appended to the block body if they are not entirely whitespace and the body is not already empty
+            if (statement != .literal) break :append true;
+            for (statement.literal.content) |ch| if (!std.ascii.isWhitespace(ch)) break :append true;
+            break :append body.items.len > 0;
+        }) try body.append(self.arena.allocator(), statement);
     }
 
     if (self.current_token.type != closing_tag and self.current_token.type != .@"else")
@@ -329,8 +333,13 @@ fn parseForStatement(self: *Self) ParseError!?ast.ForStatement {
 
                 if (self.current_token.type == .statement_close) self.progressToken();
 
-                try body.append(self.arena.allocator(), statement);
-                // self.progressToken();
+                if (append: {
+                    // literals are only appended to the block body if they are not entirely whitespace and the body is not already empty
+                    if (statement != .literal) break :append true;
+                    for (statement.literal.content) |ch| if (!std.ascii.isWhitespace(ch)) break :append true;
+                    break :append body.items.len > 0;
+                }) try body.append(self.arena.allocator(), statement);
+
                 if (self.peek_token.type == .for_close) break;
                 if (self.current_token.type == .statement_open) self.progressTokenSkipWhitespace();
             },
@@ -391,9 +400,13 @@ fn parseIfStatement(self: *Self) ParseError!?ast.IfStatement {
                 log.warn("if body statement: {f}", .{statement});
                 if (self.current_token.type == .statement_close) self.progressToken();
 
-                try body.append(self.arena.allocator(), statement);
-                // self.progressTokenSkipWhitespace();
-                // self.progressToken();
+                if (append: {
+                    // literals are only appended to the block body if they are not entirely whitespace and the body is not already empty
+                    if (statement != .literal) break :append true;
+                    for (statement.literal.content) |ch| if (!std.ascii.isWhitespace(ch)) break :append true;
+                    break :append body.items.len > 0;
+                }) try body.append(self.arena.allocator(), statement);
+
                 if (self.peek_token.type == .if_close) break;
                 if (self.current_token.type == .statement_open) self.progressTokenSkipWhitespace();
             },
