@@ -230,7 +230,7 @@ pub fn renderStatement(
             }
         },
         .literal => |s| {
-            try s.format(writer);
+            try writer.writeAll(s.content);
         },
     }
 }
