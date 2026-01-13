@@ -1,5 +1,5 @@
 const std = @import("std");
-const Scope = @import("scope.zig").Scope;
+const Scope = @import("Scope.zig");
 const log = std.log.scoped(.Iterator);
 const root = @import("root.zig");
 const Allocator = std.mem.Allocator;

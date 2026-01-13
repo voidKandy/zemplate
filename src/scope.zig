@@ -1,18 +1,95 @@
 const std = @import("std");
-const ast = @import("ast.zig");
 const root = @import("root.zig");
 const util = @import("util.zig");
 const Iterator = @import("Iterator.zig");
 const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.scope);
 const comptimePrint = std.fmt.comptimePrint;
-const renderStatement = @import("render.zig").renderStatement;
 const Error = root.Error;
 
+instance: *const anyopaque,
+access_map: std.StaticStringMap(WriteAccessFunc),
+child_scopes: std.StaticStringMap(GetInnerScopeFunc),
+iterateFunc: error{CannotIterate}!*const fn (@This()) Iterator,
+const Scope = @This();
+
+pub fn createIterator(self: @This()) error{CannotIterate}!Iterator {
+    return (try self.iterateFunc)(self);
+}
+
+pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    try writer.writeAll("Access Map:");
+    for (self.access_map.keys()) |k| {
+        try writer.print(
+            \\
+            \\ '{s}'
+        , .{k});
+    }
+    try writer.writeAll("\nChild Scopes Map:");
+    for (self.child_scopes.keys()) |k| {
+        try writer.print(
+            \\
+            \\ '{s}'
+        , .{k});
+    }
+}
+
+pub fn init(comptime Root: type, val: anytype, a: Allocator) error{OutOfMemory}!@This() {
+    if (@typeInfo(@TypeOf(val)) != .pointer) @panic("NON POINTER TYPE PASSED TO FUNCTION");
+    const DerefT = util.Deref(@TypeOf(val));
+    if (DerefT != Root) @panic("INVALID TYPE PASSED TO Scope.init");
+
+    const access_kvs = accessMapKvs(DerefT, ".");
+    const child_kvs = childScopesKvs(Root, DerefT, ".");
+
+    log.debug(
+        \\ {s} SCOPE INIT
+        \\
+    , .{@typeName(DerefT)});
+
+    const self = @This(){
+        .instance = @ptrCast(val),
+        .access_map = std.StaticStringMap(WriteAccessFunc).init(access_kvs, a) catch return error.OutOfMemory,
+        .child_scopes = std.StaticStringMap(GetInnerScopeFunc).init(child_kvs, a) catch return error.OutOfMemory,
+        .iterateFunc = blk: {
+            const Builder = Iterator.Builder(Root) catch |e| break :blk e;
+            break :blk &struct {
+                fn call(scope: Scope) Iterator {
+                    const info = Builder.ptrInfo(scope.instance);
+                    return .{
+                        .nextFunc = &Builder.next,
+                        .visitFunc = &Builder.visit,
+                        .base_ptr = info.base_ptr,
+                        .len = info.len,
+                    };
+                }
+            }.call;
+        },
+    };
+    return self;
+}
+
+pub fn deinit(self: @This(), a: Allocator) void {
+    if (self.access_map.kvs.len > 0)
+        self.access_map.deinit(a);
+    if (self.child_scopes.kvs.len > 0)
+        self.child_scopes.deinit(a);
+}
+
+/// --- Private methods & Declarations for building Scope ---
+///
+///
 const GetInnerScopeFunc = *const fn (
     Allocator,
     Scope,
 ) error{OutOfMemory}!Scope;
+
+const WriteAccessFunc = *const fn (
+    *std.Io.Writer,
+    Scope,
+    std.json.Stringify.Options,
+    bool,
+) Error!void;
 
 pub inline fn childScopesKvsCount(comptime Root: type, comptime T: type) usize {
     return switch (@typeInfo(T)) {
@@ -163,13 +240,6 @@ inline fn flattenFunctionChain(
     }.call;
 }
 
-const WriteAccessFunc = *const fn (
-    *std.Io.Writer,
-    Scope,
-    std.json.Stringify.Options,
-    bool,
-) Error!void;
-
 pub inline fn accessMapKvsCount(comptime T: type) usize {
     switch (@typeInfo(T)) {
         .@"struct" => {
@@ -197,7 +267,7 @@ inline fn accessMapKvs(comptime T: type, comptime basename: []const u8) [accessM
             print_json: bool,
         ) Error!void {
             const val: *const T = @ptrCast(@alignCast(s.instance));
-            log.warn("Dereferencing pointer {any}", .{s.instance});
+            log.debug("Dereferencing pointer {any}", .{s.instance});
             try util.writeType(T, val.*, w, json_opts, print_json);
         }
     }.call;
@@ -239,72 +309,40 @@ inline fn accessMapKvs(comptime T: type, comptime basename: []const u8) [accessM
     }
 }
 
-pub const Scope = struct {
-    instance: *const anyopaque,
-    access_map: std.StaticStringMap(WriteAccessFunc),
-    child_scopes: std.StaticStringMap(GetInnerScopeFunc),
-    iterateFunc: error{CannotIterate}!*const fn (@This()) Iterator,
+test "counts correct" {
+    const Other = struct {
+        numbers: []const u32,
+    };
 
-    pub fn createIterator(self: @This()) error{CannotIterate}!Iterator {
-        return (try self.iterateFunc)(self);
+    const Inner = struct {
+        string: []const u8,
+        other: Other,
+    };
+
+    const Test = struct {
+        id: i32,
+        inner: Inner,
+        arr: []const u8,
+        others: []const Other,
+    };
+
+    const an = accessMapKvsCount(Test);
+    if (an != 8) {
+        std.log.err(
+            \\ Expected 8 got: {d}
+        , .{an});
+        return error.Failure;
     }
-
-    pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        try writer.writeAll("Access Map:");
-        for (self.access_map.keys()) |k| {
-            try writer.print(
-                \\
-                \\ '{s}'
-            , .{k});
-        }
-        try writer.writeAll("\nChild Scopes Map:");
-        for (self.child_scopes.keys()) |k| {
-            try writer.print(
-                \\
-                \\ '{s}'
-            , .{k});
-        }
+    const cn = childScopesKvsCount(Test, Test);
+    if (cn != 6) {
+        std.log.err(
+            \\ Expected 6 got: {d}
+        , .{cn});
+        return error.Failure;
     }
+}
 
-    pub fn init(comptime Root: type, val: anytype, a: Allocator) error{OutOfMemory}!@This() {
-        if (@typeInfo(@TypeOf(val)) != .pointer) @panic("NON POINTER TYPE PASSED TO FUNCTION");
-        const DerefT = util.Deref(@TypeOf(val));
-        if (DerefT != Root) @panic("INVALID TYPE PASSED TO Scope.init");
-
-        const access_kvs = accessMapKvs(DerefT, ".");
-        const child_kvs = childScopesKvs(Root, DerefT, ".");
-
-        log.warn(
-            \\ {s} SCOPE INIT
-            \\
-        , .{@typeName(DerefT)});
-
-        const self = @This(){
-            .instance = @ptrCast(val),
-            .access_map = std.StaticStringMap(WriteAccessFunc).init(access_kvs, a) catch return error.OutOfMemory,
-            .child_scopes = std.StaticStringMap(GetInnerScopeFunc).init(child_kvs, a) catch return error.OutOfMemory,
-            .iterateFunc = blk: {
-                const Builder = Iterator.Builder(Root) catch |e| break :blk e;
-                break :blk &struct {
-                    fn call(scope: Scope) Iterator {
-                        const info = Builder.ptrInfo(scope.instance);
-                        return .{
-                            .nextFunc = &Builder.next,
-                            .visitFunc = &Builder.visit,
-                            .base_ptr = info.base_ptr,
-                            .len = info.len,
-                        };
-                    }
-                }.call;
-            },
-        };
-        return self;
-    }
-
-    pub fn deinit(self: @This(), a: Allocator) void {
-        if (self.access_map.kvs.len > 0)
-            self.access_map.deinit(a);
-        if (self.child_scopes.kvs.len > 0)
-            self.child_scopes.deinit(a);
-    }
-};
+test "primitive scope Okay" {
+    const scope = try Scope.init(u8, &@as(u8, 42), std.testing.allocator);
+    defer scope.deinit(std.testing.allocator);
+}

@@ -119,9 +119,6 @@ pub fn parseProgram(self: *Self) ParseError!ast.Program {
 }
 
 fn parseStatement(self: *Self) ParseError!?ast.Statement {
-    // log.warn("starting parse: {any}", .{self.current_token.type});
-    // if (self.prev_token) |p| log.warn("prev: {f}", .{p});
-    // self.skipCurrentWhitespace();
     switch (self.current_token.type) {
         .statement_open => {
             self.progressTokenSkipWhitespace();
@@ -180,10 +177,6 @@ fn parseLiteralStatement(self: *Self) ParseError!?ast.LiteralStatement {
     var writer: std.Io.Writer.Allocating = .init(self.arena.allocator());
     defer writer.deinit();
 
-    log.warn(
-        \\LITERAL START: {f}
-    , .{self.current_token});
-
     if (!self.current_token.type.isWhitespace())
         if (!try self.expectCurrent(.literal)) return null;
 
@@ -200,9 +193,6 @@ fn parseLiteralStatement(self: *Self) ParseError!?ast.LiteralStatement {
     }
 
     if (self.current_token.type == .literal or self.current_token.type.isWhitespace()) @panic("");
-    log.warn(
-        \\ LITERAL END: {f}
-    , .{self.current_token});
 
     return ast.LiteralStatement{
         .content = try writer.toOwnedSlice(),
@@ -362,7 +352,6 @@ fn parseForStatement(self: *Self) ParseError!?ast.ForStatement {
 }
 
 fn parseIfStatement(self: *Self) ParseError!?ast.IfStatement {
-    log.warn("parsing if", .{});
     if (!try self.expectCurrent(.if_open)) return null;
     self.progressTokenSkipWhitespace();
 
@@ -376,7 +365,6 @@ fn parseIfStatement(self: *Self) ParseError!?ast.IfStatement {
     var alternatives: ArrayList(ast.ElseBlock) = .empty;
 
     if (self.current_token.type == .statement_open) self.progressTokenSkipWhitespace();
-    log.warn("parsing if body", .{});
     while (true) {
         switch (self.current_token.type) {
             .if_close => break,
@@ -397,7 +385,6 @@ fn parseIfStatement(self: *Self) ParseError!?ast.IfStatement {
                     , .{});
                     return null;
                 };
-                log.warn("if body statement: {f}", .{statement});
                 if (self.current_token.type == .statement_close) self.progressToken();
 
                 if (append: {
@@ -428,11 +415,6 @@ fn parseIfStatement(self: *Self) ParseError!?ast.IfStatement {
 }
 
 fn parseExpressionStatement(self: *Self) ParseError!?ast.ExpressionStatement {
-    // self.progressTokenSkipWhitespace();
-    log.warn(
-        \\parsing expression statement starting with: {any}
-    , .{self.current_token.type});
-
     const first = blk: {
         switch (self.current_token.type) {
             .literal => {

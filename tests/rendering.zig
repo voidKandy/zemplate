@@ -50,7 +50,7 @@ fn renderForLoopTest() !void {
                 },
             },
         };
-    const scope = try zemplate.scope.Scope.init(Test, &t, a);
+    const scope = try zemplate.Scope.init(Test, &t, a);
     defer scope.deinit(a);
 
     try zemplate.render.renderStatement(

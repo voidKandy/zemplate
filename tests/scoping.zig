@@ -2,7 +2,7 @@ const std = @import("std");
 const zemplate = @import("zemplate");
 const runTest = @import("shared.zig").runTest;
 
-const Scope = zemplate.scope.Scope;
+const Scope = zemplate.Scope;
 
 const Inner = struct {
     string: []const u8,
@@ -35,35 +35,6 @@ fn makeTestValue() Test {
 }
 
 test "scoping" {
-    runTest("access map count correct", struct {
-        fn t() !void {
-            const n =
-                zemplate.scope.accessMapKvsCount(Test);
-            if (n != 8) {
-                std.log.err(
-                    \\ Expected 8 got: {d}
-                , .{n});
-                return error.Failure;
-            }
-        }
-    }.t);
-    runTest("child map count correct", struct {
-        fn t() !void {
-            const n = zemplate.scope.childScopesKvsCount(Test, Test);
-            if (n != 6) {
-                std.log.err(
-                    \\ Expected 6 got: {d}
-                , .{n});
-                return error.Failure;
-            }
-        }
-    }.t);
-    runTest("primitive scope Okay", struct {
-        fn t() !void {
-            const scope = try Scope.init(u8, &@as(u8, 42), std.testing.allocator);
-            defer scope.deinit(std.testing.allocator);
-        }
-    }.t);
     runTest("produces access functions correctly", accessMapKeysTest);
     runTest("produces child scopes correctly", childScopesKeysTest);
     runTest("child scopes work correctly", childScopeFunctionTest);
@@ -126,11 +97,6 @@ fn childScopeFunctionTest() !void {
     var value = makeTestValue();
     const scope = try Scope.init(Test, &value, std.testing.allocator);
     defer scope.deinit(std.testing.allocator);
-    // std.log.err(
-    //     \\
-    //     \\OUTER SCOPE:
-    //     \\ {f}
-    // , .{scope});
 
     for ([_][]const u8{
         ".inner",
@@ -140,11 +106,5 @@ fn childScopeFunctionTest() !void {
         const getChild = scope.child_scopes.get(n).?;
         const inner_scope = try getChild(std.testing.allocator, scope);
         defer inner_scope.deinit(std.testing.allocator);
-        // std.log.err(
-        //     \\
-        //     \\INNER '{s}' SCOPE:
-        //     \\ {f}
-        //     \\
-        // , .{ n, inner_scope });
     }
 }

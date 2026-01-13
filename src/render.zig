@@ -1,7 +1,7 @@
 const std = @import("std");
 const root = @import("root.zig");
 const ast = @import("ast.zig");
-const scope_mod = @import("scope.zig");
+const Scope = @import("Scope.zig");
 const Error = root.Error;
 const Allocator = std.mem.Allocator;
 const log = std.log.scoped(.render);
@@ -9,11 +9,11 @@ const log = std.log.scoped(.render);
 pub fn renderStatement(
     a: Allocator,
     writer: *std.Io.Writer,
-    scope: scope_mod.Scope,
+    scope: Scope,
     statement: ast.Statement,
     json_opts: std.json.Stringify.Options,
 ) Error!void {
-    log.warn(
+    log.debug(
         \\ RENDERING STATEMENT: {s}
     , .{@tagName(statement)});
     // _ = writer;
@@ -40,12 +40,9 @@ pub fn renderStatement(
                 };
             const renderFunc =
                 &struct {
-                    fn render(sc: scope_mod.Scope, opaq_args: *anyopaque) Error!void {
+                    fn render(sc: Scope, opaq_args: *anyopaque) Error!void {
                         const args: *RenderArgs = @ptrCast(@alignCast(opaq_args));
                         for (args.block.body) |st| {
-                            log.warn(
-                                \\RENDERING {s}
-                            , .{@tagName(st)});
                             try renderStatement(
                                 args.a,
                                 args.writer,
@@ -58,19 +55,13 @@ pub fn renderStatement(
                 }.render;
 
             while (iter.next()) |n| {
-                log.warn(
-                    \\got next 
-                , .{});
-
                 try iter.visit(a, n, renderFunc, &RenderArgs{
                     .a = a,
                     .writer = writer,
                     .block = s.block,
                     .json_opts = json_opts,
                 });
-                log.warn("finished visit", .{});
             }
-            log.warn("out", .{});
 
             if (s.alternatives) |alts| {
                 for (alts) |alt| {
