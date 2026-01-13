@@ -72,7 +72,7 @@ pub inline fn writeType(
     print_json: bool,
 ) Error!void {
     if (@TypeOf(inst) != T) @panic(@typeName(T) ++ " =! " ++ @typeName(@TypeOf(inst)));
-    log.warn("Trying writetype: {s}", .{@typeName(T)});
+    log.debug("Trying writetype: {s}", .{@typeName(T)});
 
     if (print_json)
         return try std.json.Stringify.value(inst, json_opts, writer);
