@@ -7,6 +7,7 @@ const JsonOptions = std.json.Stringify.Options;
 const comptimePrint = std.fmt.comptimePrint;
 
 const COMPILE_LOGS: bool = false;
+
 pub inline fn compileLogPrint(comptime fmt: []const u8, args: anytype) void {
     if (COMPILE_LOGS) @compileLog(comptimePrint(fmt, args));
 }
@@ -140,9 +141,6 @@ pub inline fn writeType(
             }
 
             return;
-            // if (@hasDecl(T, "format"))
-            //     return try inst.format(writer);
-            // log.warn("No branch for handling {s}", .{@typeName(T)});
         },
         .int => |int| {
             return try if (int.bits == @bitSizeOf(u8))
