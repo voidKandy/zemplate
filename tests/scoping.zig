@@ -58,6 +58,12 @@ test "scoping" {
             }
         }
     }.t);
+    runTest("primitive scope Okay", struct {
+        fn t() !void {
+            const scope = try Scope.init(u8, &@as(u8, 42), std.testing.allocator);
+            defer scope.deinit(std.testing.allocator);
+        }
+    }.t);
     runTest("produces access functions correctly", accessMapKeysTest);
     runTest("produces child scopes correctly", childScopesKeysTest);
     runTest("child scopes work correctly", childScopeFunctionTest);
@@ -120,11 +126,11 @@ fn childScopeFunctionTest() !void {
     var value = makeTestValue();
     const scope = try Scope.init(Test, &value, std.testing.allocator);
     defer scope.deinit(std.testing.allocator);
-    std.log.err(
-        \\
-        \\OUTER SCOPE:
-        \\ {f}
-    , .{scope});
+    // std.log.err(
+    //     \\
+    //     \\OUTER SCOPE:
+    //     \\ {f}
+    // , .{scope});
 
     for ([_][]const u8{
         ".inner",
@@ -134,11 +140,11 @@ fn childScopeFunctionTest() !void {
         const getChild = scope.child_scopes.get(n).?;
         const inner_scope = try getChild(std.testing.allocator, scope);
         defer inner_scope.deinit(std.testing.allocator);
-        std.log.err(
-            \\
-            \\INNER '{s}' SCOPE:
-            \\ {f}
-            \\
-        , .{ n, inner_scope });
+        // std.log.err(
+        //     \\
+        //     \\INNER '{s}' SCOPE:
+        //     \\ {f}
+        //     \\
+        // , .{ n, inner_scope });
     }
 }

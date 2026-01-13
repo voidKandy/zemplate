@@ -8,19 +8,15 @@ const Allocator = std.mem.Allocator;
 const Error = @import("root.zig").Error;
 
 pub inline fn UnwrapIterableChild(comptime T: type) ?type {
-    const info = @typeInfo(T);
-    const child_opt: ?type = blk: {
-        switch (info) {
-            .array => |a| break :blk a.child,
-            .pointer => |p| switch (p.size) {
-                .slice => break :blk p.child,
-                else => break :blk UnwrapIterableChild(p.child),
-            },
-            else => {},
-        }
-        break :blk null;
-    };
-    return child_opt;
+    switch (@typeInfo(T)) {
+        .array => |a| return a.child,
+        .pointer => |p| switch (p.size) {
+            .slice => return p.child,
+            else => return UnwrapIterableChild(p.child),
+        },
+        else => {},
+    }
+    return null;
 }
 
 /// validates that `Parent` _is_ a `struct` & that `field_name` is a field of `Parent` and is an iterable type
