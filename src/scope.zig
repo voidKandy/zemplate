@@ -260,7 +260,6 @@ pub const Scope = struct {
         /// @argument3: second argument of function coerced to `*anyopaque`
         visitFunc: *const fn (Allocator, *const anyopaque, *const anyopaque, *anyopaque) Error!void,
         idx: usize = 0,
-        // ptr: *const anyopaque,
         base_ptr: usize,
         len: usize,
 
@@ -340,7 +339,6 @@ pub const Scope = struct {
 
                     if (iter.idx >= iter.len) return null;
 
-                    // log.warn("getting next of: {any}", .{iter.ptr});
                     // const v: *const T = @ptrCast(@alignCast(iter.ptr));
                     // log.warn("v: {any}", .{v});
                     // log.warn(
@@ -351,8 +349,8 @@ pub const Scope = struct {
 
                     const typed: *const ItemType =
                         @ptrCast(@alignCast(item_ptr));
-                    _ = typed;
                     // const item_ptr: *const anyopaque = typed;
+                    log.warn("got typed: {any}", .{typed});
 
                     iter.idx += 1;
 

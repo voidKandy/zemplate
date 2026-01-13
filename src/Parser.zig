@@ -112,50 +112,61 @@ pub fn parseProgram(self: *Self) ParseError!ast.Program {
         if (stmt) |s|
             try program.statements.append(self.arena.allocator(), s);
 
-        self.progressToken();
+        // self.progressToken();
     }
 
     return program;
 }
 
 fn parseStatement(self: *Self) ParseError!?ast.Statement {
-    self.skipCurrentWhitespace();
+    // log.warn("starting parse: {any}", .{self.current_token.type});
+    // if (self.prev_token) |p| log.warn("prev: {f}", .{p});
+    // self.skipCurrentWhitespace();
     switch (self.current_token.type) {
         .statement_open => {
             self.progressTokenSkipWhitespace();
             return self.parseStatement();
         },
-        .for_open => return .{ .@"for" = try self.parseForStatement() orelse {
-            try self.emitError(
-                \\ Failed to parse for statement
-                \\{f}
-            , .{self});
-            return null;
-        } },
-        .if_open => return .{ .@"if" = try self.parseIfStatement() orelse {
-            try self.emitError(
-                \\ Failed to parse if statement
-                \\{f}
-            , .{self});
-            return null;
-        } },
+        .for_open => return .{
+            .@"for" = try self.parseForStatement() orelse {
+                try self.emitError(
+                    \\ Failed to parse for statement
+                    \\{f}
+                , .{self});
+                return null;
+            },
+        },
+        .if_open => return .{
+            .@"if" = try self.parseIfStatement() orelse {
+                try self.emitError(
+                    \\ Failed to parse if statement
+                    \\{f}
+                , .{self});
+                return null;
+            },
+        },
 
-        .expression_open => return .{ .expression = try self.parseExpressionStatement() orelse {
-            try self.emitError(
-                \\ Failed to parse expression statement
-                \\ Parser state:
-                \\ {f}
-            , .{self});
-            return null;
-        } },
-        .literal => return .{ .literal = try self.parseLiteralStatement() orelse {
-            try self.emitError(
-                \\ Failed to parse literal statement
-                \\ Parser state:
-                \\ {f}
-            , .{self});
-            return null;
-        } },
+        .expression_open => {
+            self.progressTokenSkipWhitespace();
+            return .{ .expression = try self.parseExpressionStatement() orelse {
+                try self.emitError(
+                    \\ Failed to parse expression statement
+                    \\ Parser state:
+                    \\ {f}
+                , .{self});
+                return null;
+            } };
+        },
+        .literal, .space, .newline, .tab => return .{
+            .literal = try self.parseLiteralStatement() orelse {
+                try self.emitError(
+                    \\ Failed to parse literal statement
+                    \\ Parser state:
+                    \\ {f}
+                , .{self});
+                return null;
+            },
+        },
         else => {},
     }
 
@@ -167,7 +178,14 @@ fn parseStatement(self: *Self) ParseError!?ast.Statement {
 
 fn parseLiteralStatement(self: *Self) ParseError!?ast.LiteralStatement {
     var writer: std.Io.Writer.Allocating = .init(self.arena.allocator());
-    if (!try self.expectCurrent(.literal)) return null;
+    defer writer.deinit();
+
+    log.warn(
+        \\LITERAL START: {f}
+    , .{self.current_token});
+
+    if (!self.current_token.type.isWhitespace())
+        if (!try self.expectCurrent(.literal)) return null;
 
     if (self.prev_token) |p| {
         if (p.type.isWhitespace()) {
@@ -175,12 +193,16 @@ fn parseLiteralStatement(self: *Self) ParseError!?ast.LiteralStatement {
         }
     }
 
-    defer writer.deinit();
-    while (true) {
+    while (self.current_token.type.isWhitespace() or self.current_token.type == .literal) {
         try writer.writer.writeAll(self.current_token.literal);
-        if (!self.peek_token.type.isWhitespace() and self.peek_token.type != .literal) break;
+        // if (!self.peek_token.type.isWhitespace() and self.peek_token.type != .literal) break;
         self.progressToken();
     }
+
+    if (self.current_token.type == .literal or self.current_token.type.isWhitespace()) @panic("");
+    log.warn(
+        \\ LITERAL END: {f}
+    , .{self.current_token});
 
     return ast.LiteralStatement{
         .content = try writer.toOwnedSlice(),
@@ -217,16 +239,18 @@ fn parseElseBlock(self: *Self, if_or_for: enum { @"if", @"for" }) ParseError!?as
     self.progressTokenSkipWhitespace();
 
     var condition: ?ast.ExpressionStatement = null;
-    if (self.current_token.type == .if_open)
+    if (self.current_token.type == .if_open) {
+        self.progressTokenSkipWhitespace();
         condition = try self.parseExpressionStatement() orelse {
             try self.emitError(
                 \\ Else statement contained 'if' but no condition followed
             , .{});
             return null;
         };
+        if (!try self.expectPrevious(.statement_close)) return null;
+    }
 
-    if (!try self.expectCurrent(.statement_close)) return null;
-    self.progressTokenSkipWhitespace();
+    self.progressToken();
 
     var body = ArrayList(ast.Statement).empty;
     var nesting_depth: usize = 0;
@@ -239,10 +263,10 @@ fn parseElseBlock(self: *Self, if_or_for: enum { @"if", @"for" }) ParseError!?as
     while (true) {
         if (self.current_token.type == .statement_open) self.progressTokenSkipWhitespace();
         if (self.current_token.type == .@"else") break;
+        if (self.current_token.type == opening_tag) nesting_depth += 1;
         if (self.current_token.type == closing_tag) {
             if (nesting_depth == 0) break else nesting_depth -= 1;
         }
-        if (self.current_token.type == opening_tag) nesting_depth += 1;
 
         const statement = try self.parseStatement() orelse {
             try self.emitError(
@@ -251,7 +275,7 @@ fn parseElseBlock(self: *Self, if_or_for: enum { @"if", @"for" }) ParseError!?as
             return null;
         };
         try body.append(self.arena.allocator(), statement);
-        self.progressTokenSkipWhitespace();
+        // self.progressTokenSkipWhitespace();
     }
 
     if (self.current_token.type != closing_tag and self.current_token.type != .@"else")
@@ -259,8 +283,6 @@ fn parseElseBlock(self: *Self, if_or_for: enum { @"if", @"for" }) ParseError!?as
             \\ Expected Else Statement to end with {any} or {any}
             \\ Instead got: {any}
         , .{ closing_tag, .@"else", self.current_token.type });
-
-    // if (!try self.expectCurrent(closing_tag)) return null;
 
     return .{
         .condition = condition,
@@ -272,17 +294,17 @@ fn parseElseBlock(self: *Self, if_or_for: enum { @"if", @"for" }) ParseError!?as
 
 fn parseForStatement(self: *Self) ParseError!?ast.ForStatement {
     if (!try self.expectCurrent(.for_open)) return null;
-
     self.progressTokenSkipWhitespace();
+
     const access = try self.parseAccessExpression() orelse {
         try self.emitError("Expected to encounter an access expression statement in for statement", .{});
         return null;
     };
+    self.progressToken();
 
     var body: ArrayList(ast.Statement) = .empty;
     var alternatives: ArrayList(ast.ElseBlock) = .empty;
 
-    self.progressTokenSkipWhitespace();
     if (self.current_token.type == .statement_open) self.progressTokenSkipWhitespace();
     while (true) {
         switch (self.current_token.type) {
@@ -308,15 +330,19 @@ fn parseForStatement(self: *Self) ParseError!?ast.ForStatement {
                 if (self.current_token.type == .statement_close) self.progressToken();
 
                 try body.append(self.arena.allocator(), statement);
-                self.progressTokenSkipWhitespace();
+                // self.progressToken();
+                if (self.peek_token.type == .for_close) break;
                 if (self.current_token.type == .statement_open) self.progressTokenSkipWhitespace();
             },
         }
     }
 
+    self.skipCurrentWhitespace();
     if (!try self.expectCurrent(.for_close)) return null;
     self.progressTokenSkipWhitespace();
     if (!try self.expectCurrent(.statement_close)) return null;
+    self.progressToken();
+
     return .{
         .access = access,
         .alternatives = if (alternatives.items.len == 0) null else try alternatives.toOwnedSlice(self.arena.allocator()),
@@ -327,18 +353,21 @@ fn parseForStatement(self: *Self) ParseError!?ast.ForStatement {
 }
 
 fn parseIfStatement(self: *Self) ParseError!?ast.IfStatement {
+    log.warn("parsing if", .{});
     if (!try self.expectCurrent(.if_open)) return null;
+    self.progressTokenSkipWhitespace();
 
     const condition = try self.parseExpressionStatement() orelse {
         try self.emitError("Expected to encounter an conditional expression statement in if statement", .{});
         return null;
     };
+    self.progressToken();
 
     var body: ArrayList(ast.Statement) = .empty;
     var alternatives: ArrayList(ast.ElseBlock) = .empty;
 
-    self.progressTokenSkipWhitespace();
     if (self.current_token.type == .statement_open) self.progressTokenSkipWhitespace();
+    log.warn("parsing if body", .{});
     while (true) {
         switch (self.current_token.type) {
             .if_close => break,
@@ -359,18 +388,22 @@ fn parseIfStatement(self: *Self) ParseError!?ast.IfStatement {
                     , .{});
                     return null;
                 };
+                log.warn("if body statement: {f}", .{statement});
                 if (self.current_token.type == .statement_close) self.progressToken();
 
                 try body.append(self.arena.allocator(), statement);
-                self.progressTokenSkipWhitespace();
+                // self.progressTokenSkipWhitespace();
+                // self.progressToken();
+                if (self.peek_token.type == .if_close) break;
                 if (self.current_token.type == .statement_open) self.progressTokenSkipWhitespace();
             },
         }
     }
-
+    self.skipCurrentWhitespace();
     if (!try self.expectCurrent(.if_close)) return null;
     self.progressTokenSkipWhitespace();
     if (!try self.expectCurrent(.statement_close)) return null;
+    self.progressToken();
 
     return .{
         .condition = condition,
@@ -381,10 +414,11 @@ fn parseIfStatement(self: *Self) ParseError!?ast.IfStatement {
     };
 }
 
-/// Expressions can appear between something following
-/// `statement_open` & `statement_close` | `expression_open` & `expression_close`
 fn parseExpressionStatement(self: *Self) ParseError!?ast.ExpressionStatement {
-    self.progressTokenSkipWhitespace();
+    // self.progressTokenSkipWhitespace();
+    log.warn(
+        \\parsing expression statement starting with: {any}
+    , .{self.current_token.type});
 
     const first = blk: {
         switch (self.current_token.type) {
@@ -419,7 +453,10 @@ fn parseExpressionStatement(self: *Self) ParseError!?ast.ExpressionStatement {
     // self.progressTokenSkipWhitespace();
     if (!self.current_token.type.isComparison()) {
         switch (self.current_token.type) {
-            .expression_close, .statement_close => {},
+            .expression_close, .statement_close => {
+                // if (!try self.expectCurrent(.expression_close)) return null;
+                self.progressToken();
+            },
             else => |t| {
                 try self.emitError(
                     \\ Expected expression statement to end with .expression_close or .statement_close
@@ -432,10 +469,12 @@ fn parseExpressionStatement(self: *Self) ParseError!?ast.ExpressionStatement {
     }
 
     const operator = ast.ComparisonExpression.Operator.tryFromTokenType(self.current_token.type).?;
+    self.progressTokenSkipWhitespace();
     const right = try self.parseExpressionStatement() orelse {
         try self.emitError("Failed to parse right side expression in comparison\n", .{});
         return null;
     };
+
     return try ast.ExpressionStatement.create(self.arena.allocator(), .{ .comparison = .{
         .operator = operator,
         .left = first,
