@@ -85,12 +85,13 @@ pub fn peekNextNth(self: *Self, nth: usize) ?*const u8 {
 fn readWord(self: *Self) usize {
     const start_pos = self.pos;
     while (self.peekNext()) |ch| {
-        // log.debug("next char: {c}", .{ch.*});
+        log.debug("next char: {c}", .{ch.*});
         const encountered_keyword = blk: {
             if (Token.FirstCharMap.get().get(ch.*)) |keywords| {
                 for (keywords) |kw| {
                     const window_start = self.pos;
                     const window_end = window_start + kw.len;
+                    if (window_end >= self.input.len) break :blk false;
                     log.debug(
                         \\ Checking equality of:
                         \\ '{s}'
@@ -146,19 +147,19 @@ pub fn nextTokenSkipWhitespace(self: *Self) Token {
 pub fn nextToken(self: *Self) Token {
     var slice_end: usize = self.pos + 1;
     var slice_start: usize = self.pos;
+    const keyword_first_char_map = Token.FirstCharMap.get();
 
     const token_opt: ?Token = outer: while (self.progress()) |c| : (slice_end += 1) {
         switch (c) {
             ' ' => break :outer Token.create(" ", .space),
             '\n' => break :outer Token.create("\n", .newline),
             '\t' => break :outer Token.create("\t", .tab),
-            else => if (Token.FirstCharMap.get().get(c)) |keywords| {
+            else => if (keyword_first_char_map.get(c)) |keywords| {
                 for (0..keywords.len) |i| {
                     const keyword = keywords[i];
 
                     const typ = Token.keyword_map.get(keyword) orelse @panic("malformed FirstCharMap");
-
-                    if (typ.isComparison() and (!self.in_statement and !self.in_expression)) continue :outer;
+                    if (typ.isComparison() and (!self.in_statement and !self.in_expression)) break;
 
                     switch (typ) {
                         .json => if (self.prev_token orelse continue :outer != .access)
@@ -180,6 +181,11 @@ pub fn nextToken(self: *Self) Token {
                             slice_end += 1;
                         }
 
+                        // if (!std.mem.eql(u8, self.input[slice_start..slice_end], keyword)) {
+                        //     log.err("'{s}' != '{s}'", .{ self.input[slice_start..slice_end], keyword });
+                        //     @panic("");
+                        // }
+
                         break :outer Token.create(self.input[slice_start..slice_end], typ);
                     }
                 }
@@ -189,7 +195,7 @@ pub fn nextToken(self: *Self) Token {
         if (self.peekNext() != null)
             slice_end += self.readWord();
 
-        const tok: Token.Type = blk: {
+        const typ: Token.Type = blk: {
             const slice = self.input[slice_start..slice_end];
             // access tokens are always between markers and always start with a '.'
             // might be after an expression_open or between markers
@@ -197,7 +203,7 @@ pub fn nextToken(self: *Self) Token {
             break :blk .literal;
         };
 
-        break :outer Token.create(self.input[slice_start..slice_end], tok);
+        break :outer Token.create(self.input[slice_start..slice_end], typ);
     } else {
         break :outer null;
     };

@@ -1,7 +1,6 @@
 const std = @import("std");
 const zemplate = @import("zemplate");
-const print = std.debug.print;
-const panic = std.debug.panic;
+const shared = @import("shared.zig");
 const runTest = @import("shared.zig").runTest;
 const Lexer = zemplate.Lexer;
 const Token = zemplate.Token;
@@ -54,17 +53,29 @@ const LexerTestCase = struct {
 };
 
 fn lexerTest() !void {
+    var failed = false;
     for (ALL_CASES) |case| {
-        if (try case.runTest()) |failure| {
+        if (case.runTest() catch |e| {
+            std.log.err(
+                \\ {s}{s} Test Exited Early: {s}{s}
+            , .{ shared.ansi.YELLOW, case.name, @errorName(e), shared.ansi.RESET });
+            failed = true;
+            continue;
+        }) |failure| {
             std.log.err(
                 \\
-                \\ {s} Test Failed:
+                \\ {s}{s} Test Failure:{s}
                 \\ {f}
                 \\
-            , .{ case.name, failure });
-            return error.Failure;
+            , .{ shared.ansi.YELLOW, case.name, shared.ansi.RESET, failure });
+        } else {
+            std.log.warn(
+                \\{s}'{s}' Case Passed!{s}
+            , .{ shared.ansi.GREEN, case.name, shared.ansi.RESET });
         }
     }
+
+    if (failed) return error.Failure;
 }
 
 const ALL_CASES = &[_]LexerTestCase{
@@ -202,6 +213,51 @@ const ALL_CASES = &[_]LexerTestCase{
             .{
                 .literal = "zz||",
                 .type = .statement_close,
+            },
+            .{
+                .literal = "",
+                .type = .eof,
+            },
+        },
+    },
+
+    .{
+        .name = "small case",
+        .content =
+        \\ Hello {|.field|}!
+        ,
+        .expected_tokens = &[_]Token{
+            .{
+                .literal = " ",
+                .type = .space,
+            },
+            .{
+                .literal = "Hello",
+                .type = .literal,
+            },
+            .{
+                .literal = " ",
+                .type = .space,
+            },
+            .{
+                .literal = "{|",
+                .type = .expression_open,
+            },
+            .{
+                .literal = ".field",
+                .type = .access,
+            },
+            .{
+                .literal = "|}",
+                .type = .expression_close,
+            },
+            .{
+                .literal = "!",
+                .type = .literal,
+            },
+            .{
+                .literal = "",
+                .type = .eof,
             },
         },
     },
@@ -386,9 +442,11 @@ const ALL_CASES = &[_]LexerTestCase{
         .name = "html",
         .content =
         \\ <div>
-        \\  ||zz .field zz||
-        \\  <div attribute="||zz .attr.sub zz||"></div>
+        \\  {| .field |}
+        \\  <div attribute="{| .attr.sub |}"></div>
         \\ <p> for too long </p>
+        \\ <{|.something|}>
+        \\ </{|.something|}>
         \\ ||zz for .field2 zz||
         \\ {|.|}
         \\ ||zz endfor zz||
@@ -415,8 +473,8 @@ const ALL_CASES = &[_]LexerTestCase{
                 .type = .space,
             },
             .{
-                .literal = "||zz",
-                .type = .statement_open,
+                .literal = "{|",
+                .type = .expression_open,
             },
             .{
                 .literal = " ",
@@ -431,8 +489,8 @@ const ALL_CASES = &[_]LexerTestCase{
                 .type = .space,
             },
             .{
-                .literal = "zz||",
-                .type = .statement_close,
+                .literal = "|}",
+                .type = .expression_close,
             },
             .{
                 .literal = "\n",
@@ -459,8 +517,8 @@ const ALL_CASES = &[_]LexerTestCase{
                 .type = .literal,
             },
             .{
-                .literal = "||zz",
-                .type = .statement_open,
+                .literal = "{|",
+                .type = .expression_open,
             },
             .{
                 .literal = " ",
@@ -475,8 +533,8 @@ const ALL_CASES = &[_]LexerTestCase{
                 .type = .space,
             },
             .{
-                .literal = "zz||",
-                .type = .statement_close,
+                .literal = "|}",
+                .type = .expression_close,
             },
             .{
                 .literal = "\"></div>",
@@ -524,6 +582,62 @@ const ALL_CASES = &[_]LexerTestCase{
             },
             .{
                 .literal = "</p>",
+                .type = .literal,
+            },
+            .{
+                .literal = "\n",
+                .type = .newline,
+            },
+            .{
+                .literal = " ",
+                .type = .space,
+            },
+            .{
+                .literal = "<",
+                .type = .literal,
+            },
+            .{
+                .literal = "{|",
+                .type = .expression_open,
+            },
+            .{
+                .literal = ".something",
+                .type = .access,
+            },
+            .{
+                .literal = "|}",
+                .type = .expression_close,
+            },
+            .{
+                .literal = ">",
+                .type = .literal,
+            },
+            .{
+                .literal = "\n",
+                .type = .newline,
+            },
+            .{
+                .literal = " ",
+                .type = .space,
+            },
+            .{
+                .literal = "</",
+                .type = .literal,
+            },
+            .{
+                .literal = "{|",
+                .type = .expression_open,
+            },
+            .{
+                .literal = ".something",
+                .type = .access,
+            },
+            .{
+                .literal = "|}",
+                .type = .expression_close,
+            },
+            .{
+                .literal = ">",
                 .type = .literal,
             },
             .{

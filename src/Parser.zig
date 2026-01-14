@@ -10,16 +10,12 @@ const log = std.log.scoped(.Parser);
 const Error = @import("root.zig").Error;
 const util = @import("util.zig");
 const allocPrint = std.fmt.allocPrint;
-/// TO BE REMOVED
-// const SerializeOptions = util.SerializeOptions;
 
 arena: std.heap.ArenaAllocator,
 writer: std.Io.Writer.Allocating,
 errors: ArrayList([]u8),
 
 lexer: *Lexer,
-
-json_options: std.json.Stringify.Options,
 
 current_token: Token,
 peek_token: Token,
@@ -57,16 +53,17 @@ pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
 pub fn init(
     a: Allocator,
     lexer: *Lexer,
-    json_opts: ?std.json.Stringify.Options,
 ) ParseError!Self {
-    // maybe rmove?
-    if (lexer.pos != 0)
-        @panic("Parser initialized with Lexer with .pos != 0");
+    if (lexer.pos != 0) @panic("Parser initialized with Lexer with .pos != 0");
+
     var arena = std.heap.ArenaAllocator.init(a);
     const writer: std.Io.Writer.Allocating = .init(a);
+    const errs: ArrayList([]u8) = try .initCapacity(arena.allocator(), 64);
 
-    const current_token = lexer.nextTokenSkipWhitespace();
-    const peek_token = lexer.nextTokenSkipWhitespace();
+    errdefer arena.deinit();
+
+    const current_token = lexer.nextToken();
+    const peek_token = lexer.nextToken();
 
     return Self{
         .arena = arena,
@@ -74,19 +71,19 @@ pub fn init(
         .current_token = current_token,
         .peek_token = peek_token,
         .lexer = lexer,
-        .json_options = json_opts orelse .{},
-        .errors = try .initCapacity(arena.allocator(), 64),
+        .errors = errs,
     };
 }
 
 pub fn deinit(self: *Self) void {
-    self.errors.deinit(self.arena.allocator());
+    const arena_alloc = self.arena.allocator();
+    self.errors.deinit(arena_alloc);
     self.arena.deinit();
     self.writer.deinit();
     self.lexer.deinit();
 }
 
-const ParseError = error{ OutOfMemory, WriteFailed, Unexpected };
+pub const ParseError = error{ OutOfMemory, WriteFailed, ParseFailure };
 
 pub fn logErrors(self: Self, _log: anytype) void {
     if (!@hasDecl(_log, "err") or
@@ -99,20 +96,18 @@ pub fn logErrors(self: Self, _log: anytype) void {
     }
 }
 
-pub fn parseProgram(self: *Self) ParseError!ast.Program {
+pub fn parseProgram(self: *Self, a: Allocator) ParseError!ast.Program {
     var program = ast.Program{};
 
     while (!self.current_token.type.eql(.eof)) {
         const stmt = try self.parseStatement();
 
         if (self.errors.items.len > 0) {
-            return error.Unexpected;
+            return error.ParseFailure;
         }
 
         if (stmt) |s|
-            try program.statements.append(self.arena.allocator(), s);
-
-        // self.progressToken();
+            try program.statements.append(a, s);
     }
 
     return program;

@@ -16,19 +16,10 @@ pub fn renderStatement(
     log.debug(
         \\ RENDERING STATEMENT: {s}
     , .{@tagName(statement)});
-    // _ = writer;
-    // _ = val;
     switch (statement) {
         .@"for" => |s| {
-            const getChScopeFn = scope.child_scopes.get(s.access.literal) orelse {
-                log.err("No scope for literal: {s}", .{s.access.literal});
-                // BAD wrong error name
-                // REDO YOUR ERRORS BUDDY
-                return error.CannotIterate;
-            };
-            const ch_scope = try getChScopeFn(a, scope);
+            const ch_scope = try scope.getChildScope(a, s.access.literal);
             defer ch_scope.deinit(a);
-
             var iter = try ch_scope.createIterator();
 
             const RenderArgs =
@@ -80,11 +71,10 @@ pub fn renderStatement(
         .expression => |s| {
             switch (s) {
                 .access => |acc| {
-                    const writeFn = scope.access_map.get(acc.literal) orelse {
-                        log.err("No scope for literal: {s}", .{acc.literal});
-                        return error.CannotSerialize;
-                    };
-                    try writeFn(writer, scope, json_opts, acc.json);
+                    log.debug(
+                        \\WRITING ACCESS: {f}
+                    , .{acc});
+                    try scope.writeAccess(acc.literal, writer, json_opts, acc.json);
                 },
                 else => {},
             }

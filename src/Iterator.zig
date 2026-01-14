@@ -54,9 +54,9 @@ pub inline fn UnwrapIterableChild(comptime T: type) ?type {
 
 pub inline fn Builder(
     comptime T: type,
-) error{CannotIterate}!type {
+) error{NotIterable}!type {
     const type_info = @typeInfo(T);
-    const ItemType = UnwrapIterableChild(T) orelse return error.CannotIterate;
+    const ItemType = UnwrapIterableChild(T) orelse return error.NotIterable;
 
     return struct {
         pub fn ptrInfo(ptr: *const anyopaque) struct {
@@ -116,7 +116,7 @@ pub inline fn Builder(
             args: *anyopaque,
         ) Error!void {
             const v: *const ItemType = @ptrCast(@alignCast(item));
-            const scope = try Scope.init(ItemType, v, a);
+            const scope = try Scope.init(v, a);
             defer scope.deinit(a);
             const func: *const fn (Scope, *anyopaque) Error!void = @ptrCast(@alignCast(f));
             try func(scope, args);

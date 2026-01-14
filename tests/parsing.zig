@@ -28,8 +28,7 @@ fn parserTest() !void {
                 \\ {s}{s} Test Exited Early: {s}{s}
             , .{ shared.ansi.YELLOW, case.name, @errorName(e), shared.ansi.RESET });
             failed = true;
-            // continue;
-            break;
+            continue;
         }) |failure| {
             std.log.err(
                 \\
@@ -38,7 +37,6 @@ fn parserTest() !void {
                 \\
             , .{ shared.ansi.YELLOW, case.name, shared.ansi.RESET, failure });
             failed = true;
-            break;
         } else {
             std.log.warn(
                 \\{s}'{s}' Case Passed!{s}
@@ -70,11 +68,13 @@ const ParserTestCase = struct {
 
     fn runTest(self: @This(), a: std.mem.Allocator) anyerror!?Failure {
         var lexer = Lexer.init(self.content[0..]);
-        var parser = try Parser.init(a, &lexer, null);
-        const program = parser.parseProgram() catch |e| {
+        var parser = try Parser.init(a, &lexer);
+        var program = parser.parseProgram(a) catch |e| {
             parser.logErrors(std.log.scoped(.parserTest));
             return e;
         };
+
+        defer program.statements.deinit(a);
 
         for (program.statements.items, 0..) |statement, i| {
             if (!self.expected_statements[i].eql(statement)) {
@@ -92,6 +92,24 @@ const ParserTestCase = struct {
 fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
     return try a.dupe(ParserTestCase, &[_]ParserTestCase{
         .{
+            .name = "top level expression",
+            .content =
+            \\ Literal {| .field |}
+            ,
+            .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
+                .{
+                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " Literal ") },
+                },
+                .{
+                    .expression = try ast.ExpressionStatement.create(a, .{
+                        .access = .{
+                            .literal = try a.dupe(u8, ".field"),
+                        },
+                    }),
+                },
+            }),
+        },
+        .{
             .name = "if statement with literals",
             .content =
             \\ ||zz if .something zz||
@@ -102,6 +120,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             \\ ||zz endif zz||
             ,
             .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
+                .{
+                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " ") },
+                },
                 .{
                     .@"if" = .{
                         .condition = try ast.ExpressionStatement.create(a, .{
@@ -152,6 +173,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             \\ ||zz endif zz||
             ,
             .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
+                .{
+                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " ") },
+                },
                 .{
                     .@"if" = .{ .condition = try ast.ExpressionStatement.create(a, .{
                         .access = .{
@@ -212,6 +236,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             ,
             .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
                 .{
+                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " ") },
+                },
+                .{
                     .@"for" = .{
                         .access = .{
                             .literal = try a.dupe(u8, ".iterable"),
@@ -260,6 +287,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             \\ ||zz endfor zz||
             ,
             .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
+                .{
+                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " ") },
+                },
                 .{
                     .@"for" = .{ .access = .{
                         .literal = try a.dupe(u8, ".iterable"),
@@ -314,6 +344,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             \\ ||zz endif zz||
             ,
             .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
+                .{
+                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " ") },
+                },
                 .{
                     .@"if" = .{
                         .condition = try ast.ExpressionStatement.create(a, .{
@@ -399,6 +432,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             ,
             .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
                 .{
+                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " ") },
+                },
+                .{
                     .@"if" = .{
                         .condition = try ast.ExpressionStatement.create(a, .{
                             .access = .{
@@ -467,6 +503,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             ,
             .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
                 .{
+                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " ") },
+                },
+                .{
                     .@"for" = .{
                         .access = .{
                             .literal = try a.dupe(u8, ".outer_iterable"),
@@ -534,6 +573,9 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             \\ ||zz endfor zz||
             ,
             .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{
+                .{
+                    .literal = ast.LiteralStatement{ .content = try a.dupe(u8, " ") },
+                },
                 .{
                     .@"for" = .{
                         .access = .{

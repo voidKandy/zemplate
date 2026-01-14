@@ -3,16 +3,9 @@ pub const render = @import("render.zig");
 pub const ast = @import("ast.zig");
 pub const util = @import("util.zig");
 pub const Scope = @import("Scope.zig");
-pub const Template = render.Template;
+pub const Template = @import("Template.zig");
 pub const Lexer = @import("Lexer.zig");
 pub const Parser = @import("Parser.zig");
 pub const Token = @import("Token.zig");
 
-pub const Error = error{
-    SyntaxInvalid,
-    NotStructType,
-    InvalidNext,
-    CannotSerialize,
-    CannotIterate,
-    NoToken,
-} || std.mem.Allocator.Error || std.Io.Writer.Error;
+pub const Error = Parser.ParseError || Scope.ScopeError;

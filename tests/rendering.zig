@@ -42,9 +42,10 @@ const TestCase = struct {
 
         for (self.inputs_and_expected) |iande| {
             var lexer = Lexer.init(iande.input);
-            var parser = try Parser.init(a, &lexer, null);
-            const program = try parser.parseProgram();
-            const scope = try zemplate.Scope.init(Test, &self.obj, a);
+            var parser = try Parser.init(a, &lexer);
+            var program = try parser.parseProgram(a);
+            defer program.statements.deinit(a);
+            const scope = try zemplate.Scope.init(&self.obj, a);
             defer scope.deinit(a);
 
             for (program.statements.items) |st| {
@@ -90,7 +91,7 @@ fn renderForLoopTest() !void {
         \\ {|.|}
         \\ ||zz endfor zz||
         , .expected = 
-        \\o
+        \\ o
         \\ u
         \\ t
         \\ e
