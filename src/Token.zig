@@ -3,27 +3,29 @@ const mem = std.mem;
 const log = std.log.scoped(.Token);
 
 literal: []const u8,
-typ: Type,
+type: Type,
 
 const Self = @This();
 
 pub fn create(str: []const u8, typ: Type) Self {
-    return .{ .literal = str, .typ = typ };
+    return .{ .literal = str, .type = typ };
 }
 
 pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     return try writer.print(
-        \\
-        \\ --- .{s} ---
-        \\ Literal: [{s}]
-        \\
-    , .{ @tagName(self.typ), self.literal });
+        \\[.{s}: '{s}']
+    , .{ @tagName(self.type), self.literal });
 }
 
 pub inline fn eql(self: Self, other: Self) bool {
     return (mem.eql(u8, self.literal, other.literal) and
-        @intFromEnum(self.typ) == @intFromEnum(other.typ));
+        @intFromEnum(self.type) == @intFromEnum(other.type));
 }
+
+pub const EOF = Self{
+    .literal = "",
+    .type = .eof,
+};
 
 pub const Type = enum {
     space,
@@ -31,30 +33,61 @@ pub const Type = enum {
     newline,
     literal,
     access,
-    marker_open,
-    marker_close,
+    statement_open,
+    statement_close,
     expression_open,
     expression_close,
     for_open,
     for_close,
+    if_open,
+    if_close,
+    @"else",
+    greater_than,
+    less_than,
+    equal_to,
+    greater_than_or_equal,
+    less_than_or_equal,
     json,
+    eof,
 
+    pub fn eql(self: @This(), other: @This()) bool {
+        return @intFromEnum(self) == @intFromEnum(other);
+    }
     pub inline fn isWhitespace(self: @This()) bool {
         return switch (self) {
             .space, .newline, .tab => true,
             else => false,
         };
     }
+    pub inline fn isComparison(self: @This()) bool {
+        return switch (self) {
+            .greater_than,
+            .less_than,
+            .equal_to,
+            .greater_than_or_equal,
+            .less_than_or_equal,
+            => true,
+            else => false,
+        };
+    }
 };
 
 pub const keyword_map = std.StaticStringMap(Type).initComptime(.{
-    .{ "||zz", .marker_open },
-    .{ "zz||", .marker_close },
-    .{ "{{", .expression_open },
-    .{ "}}", .expression_close },
+    .{ "||zz", .statement_open },
+    .{ "zz||", .statement_close },
+    .{ "{|", .expression_open },
+    .{ "|}", .expression_close },
     .{ "for", .for_open },
     .{ "endfor", .for_close },
+    .{ "if", .if_open },
+    .{ "else", .@"else" },
+    .{ "endif", .if_close },
     .{ "json", .json },
+    .{ ">", .greater_than },
+    .{ "<", .less_than },
+    .{ "==", .equal_to },
+    .{ ">=", .greater_than_or_equal },
+    .{ "<=", .less_than_or_equal },
 });
 
 /// MUST be initialized
