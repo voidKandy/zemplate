@@ -83,9 +83,9 @@ const ALL_CASES = &[_]LexerTestCase{
         .name = "if statements",
         .content =
         \\ ||zz if .something > 34 zz||
-        \\ {|.|}
+        \\ {|.nested_field|}
         \\ ||zz if .nested_thing == 0 zz||
-        \\ {|.|}
+        \\ if {|.|} 
         \\ ||zz else zz||
         \\ ||zz endif zz||
         \\
@@ -123,7 +123,7 @@ const ALL_CASES = &[_]LexerTestCase{
                 .type = .expression_open,
             },
             .{
-                .literal = ".",
+                .literal = ".nested_field",
                 .type = .access,
             },
             .{
@@ -153,6 +153,10 @@ const ALL_CASES = &[_]LexerTestCase{
             .{
                 .literal = "zz||",
                 .type = .statement_close,
+            },
+            .{
+                .literal = "if",
+                .type = .literal,
             },
             .{
                 .literal = "{|",
@@ -443,7 +447,7 @@ const ALL_CASES = &[_]LexerTestCase{
         .content =
         \\ <div>
         \\  {| .field |}
-        \\  <div attribute="{| .attr.sub |}"></div>
+        \\  <div attribute="{| .attr.sub |}" other="{|.other|}" something_else="{|.something_else|}"></div>
         \\ <p> for too long </p>
         \\ <{|.something|}>
         \\ </{|.something|}>
@@ -531,6 +535,54 @@ const ALL_CASES = &[_]LexerTestCase{
             .{
                 .literal = " ",
                 .type = .space,
+            },
+            .{
+                .literal = "|}",
+                .type = .expression_close,
+            },
+            .{
+                .literal = "\"",
+                .type = .literal,
+            },
+            .{
+                .literal = " ",
+                .type = .space,
+            },
+            .{
+                .literal = "other=\"",
+                .type = .literal,
+            },
+            .{
+                .literal = "{|",
+                .type = .expression_open,
+            },
+            .{
+                .literal = ".other",
+                .type = .access,
+            },
+            .{
+                .literal = "|}",
+                .type = .expression_close,
+            },
+            .{
+                .literal = "\"",
+                .type = .literal,
+            },
+            .{
+                .literal = " ",
+                .type = .space,
+            },
+            .{
+                .literal = "something_else=\"",
+                .type = .literal,
+            },
+            .{
+                .literal = "{|",
+                .type = .expression_open,
+            },
+            .{
+                .literal = ".something_else",
+                .type = .access,
             },
             .{
                 .literal = "|}",

@@ -210,8 +210,8 @@ fn parseAccessExpression(self: *Self) ParseError!?ast.AccessExpression {
         switch (self.current_token.type) {
             .json => access.json = true,
             else => log.warn(
-                \\ Token ignored when parsing access token: {f}
-            , .{self.peek_token}),
+                \\ Token ignored when parsing access '{s}' token: {f}
+            , .{ access.literal, self.peek_token }),
         }
         self.progressTokenSkipWhitespace();
     }

@@ -32,14 +32,14 @@ fn nestedAccessTest() !void {
     var tmpl = try zemplate.Template.init(
         allocator,
         &TestStruct{ .field = .{ .inner = "World" } },
-        \\ Hello {|.field.inner|}!
-    ,
-        null,
     );
     defer tmpl.deinit();
 
-    const render = try tmpl.render(allocator);
-    defer allocator.free(render);
+    const render = try tmpl.render(
+        \\ Hello {|.field.inner|}!
+    ,
+        .{},
+    );
 
     if (!std.mem.eql(u8, expected, render)) {
         std.log.err(
@@ -62,13 +62,15 @@ fn readmeTest() !void {
 
     const Test = struct { field: []const u8 };
 
-    var tmpl = try zemplate.Template.init(allocator, &Test{ .field = "World" },
-        \\ Hello {|.field|}!
-    , null);
+    var tmpl = try zemplate.Template.init(
+        allocator,
+        &Test{ .field = "World" },
+    );
     defer tmpl.deinit();
 
-    const render = try tmpl.render(allocator);
-    defer allocator.free(render);
+    const render = try tmpl.render(
+        \\ Hello {|.field|}!
+    , .{});
 
     if (!std.mem.eql(u8, expected, render)) {
         std.log.err(
@@ -188,13 +190,13 @@ fn renderTest() !void {
     var tmpl = try zemplate.Template.init(
         allocator,
         &ctx,
-        input,
-        .{ .whitespace = .minified },
     );
     defer tmpl.deinit();
 
-    const render = try tmpl.render(allocator);
-    defer allocator.free(render);
+    const render = try tmpl.render(
+        input,
+        .{ .whitespace = .minified },
+    );
 
     logDiff(expected, render) catch |e| {
         std.log.err(

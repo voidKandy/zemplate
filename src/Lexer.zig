@@ -100,8 +100,8 @@ fn readWord(self: *Self) usize {
                     , .{ self.input[window_start..window_end], kw });
                     if (std.mem.eql(u8, self.input[window_start..window_end], kw)) {
                         const typ = Token.keyword_map.get(kw).?;
-                        // BAD? (smelly) this exact line is called twice
-                        if (typ.isComparison() and (!self.in_statement and !self.in_expression)) break :blk false;
+                        // BAD? (smelly) exact line is called twice
+                        if ((typ.isComparison() or typ == .if_open or typ == .if_close or typ == .@"else") and (!self.in_statement)) break :blk false;
                         break :blk true;
                     }
                     // break :blk false;
@@ -159,13 +159,14 @@ pub fn nextToken(self: *Self) Token {
                     const keyword = keywords[i];
 
                     const typ = Token.keyword_map.get(keyword) orelse @panic("malformed FirstCharMap");
-                    if (typ.isComparison() and (!self.in_statement and !self.in_expression)) break;
+                    if ((typ.isComparison() or typ == .if_open or typ == .if_close or typ == .@"else") and (!self.in_statement)) break;
 
                     switch (typ) {
                         .json => if (self.prev_token orelse continue :outer != .access)
                             continue :outer,
                         .for_open, .for_close => if (self.prev_token orelse continue :outer != .statement_open)
-                            continue :outer,
+                            break,
+                        // continue :outer,
                         else => {},
                     }
 
@@ -180,11 +181,6 @@ pub fn nextToken(self: *Self) Token {
                             _ = self.progress();
                             slice_end += 1;
                         }
-
-                        // if (!std.mem.eql(u8, self.input[slice_start..slice_end], keyword)) {
-                        //     log.err("'{s}' != '{s}'", .{ self.input[slice_start..slice_end], keyword });
-                        //     @panic("");
-                        // }
 
                         break :outer Token.create(self.input[slice_start..slice_end], typ);
                     }

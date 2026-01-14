@@ -30,13 +30,12 @@ const MyStruct = struct { field: []const u8 };
 var tmpl = try zemplate.Template.init(
     allocator,
     &MyStruct{ .field = "World" },
-    \\ Hello {|.field|}!
-, null);
-
+);
 defer tmpl.deinit();
 
-const render = try tmpl.render(allocator);
-defer allocator.free(render);
+const render = try tmpl.render(
+    \\ Hello {|.field|}!
+, .{});
 
 // Output: "Hello World!"
 ```
@@ -49,13 +48,14 @@ defer allocator.free(render);
 var tmpl = try zemplate.Template.init(
     allocator,
     &MyStruct{ .field = "World" },
+);
+defer tmpl.deinit();
+
+const render = try tmpl.render(
     \\ ||zz for .field zz||
     \\ {|.|}
     \\ ||zz endfor zz||
-, null);
-
-const render = try tmpl.render(allocator);
-defer allocator.free(render);
+, .{});
 
 // Output:
 // W
@@ -76,11 +76,12 @@ const TestStruct = struct { field: Nested };
 var tmpl = try zemplate.Template.init(
     allocator,
     &TestStruct{ .field = .{ .inner = "World" } },
-    \\ Hello {|.field.inner|}!
-, null);
+);
+defer tmpl.deinit();
 
-const render = try tmpl.render(allocator);
-defer allocator.free(render);
+const render = try tmpl.render(
+    \\ Hello {|.field.inner|}!
+, .{});
 
 // Output: "Hello World!"
 ```
@@ -95,11 +96,13 @@ const Test = struct { field: struct { key: u32 } };
 var tmpl = try zemplate.Template.init(
     allocator,
     &Test{ .field = .{ .key = 42 } },
-    \\Hello {| .field json |}!
-, null);
+);
+defer tmpl.deinit();
 
-const render = try tmpl.render(allocator);
-defer allocator.free(render);
+const render = try tmpl.render(
+    \\Hello {| .field json |}!
+, .{});
+
 
 // Output: "Hello {\"key\":42}!"
 ```
