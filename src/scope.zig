@@ -59,7 +59,6 @@ pub fn init(
         \\ .init method expected `val` argument to be a pointer to some type
     );
     const DerefT = util.Deref(@TypeOf(val));
-
     const access_kvs = accessMapKvs(DerefT, DerefT, ".");
     const child_kvs = childScopesKvs(DerefT, DerefT, ".");
 
