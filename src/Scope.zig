@@ -3,7 +3,7 @@ const root = @import("root.zig");
 const util = @import("util.zig");
 const Iterator = @import("Iterator.zig");
 const Allocator = std.mem.Allocator;
-const log = std.log.scoped(.scope);
+const log = std.log.scoped(.Scope);
 const comptimePrint = std.fmt.comptimePrint;
 
 instance: *const anyopaque,
