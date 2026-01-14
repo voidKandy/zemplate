@@ -1,57 +1,117 @@
-# zemplate
-> A very basic, zero-dependency templating engine written in Zig.
+# Zemplate
+> A minimal, zero-dependency templating engine written in Zig.
 
-I originally wrote this for my [portfolio site](https://github.com/voidKandy/zortfolio), but had a good time doing it so I turned it into its own project.
+`zemplate` leverages Zig’s **comptime** capabilities to build a function graph for efficient template rendering. Templates can access nested fields, run loops, and serialize fields to JSON — all with zero runtime reflection.
 
-It currently supports basic interpolation — inserting values from a context struct into a template. Eventually, I’d like to add simple control flow (loops, conditionals), but the goal is to keep it small and simple. Improvements such as these will be implemented as I find I need them for my portfolio.
+Originally created for my [portfolio site](https://github.com/voidKandy/zortfolio), `zemplate` became its own project because the model is flexible and extensible.
 
 ---
 
-## Example Usage
+## Concepts
+
+- **Scope**: Every template has a root scope for its context struct. Loops and conditional blocks create child scopes.  
+  - `.` accesses the current scope’s root  
+  - `.<field>` accesses a field in the current scope  
+- **Statements vs Expressions**:  
+  - **Expressions**: `{| <expression> |}` — used for rendering values  
+  - **Statements**: `||zz <statement> zz||` — used for loops or control flow  
+- **JSON Serialization**: `{| .field json |}` serializes a field to JSON. Whitespace control only applies to JSON output.
+
+---
+
+## Template Syntax Examples
+> There are more great usage examples in `tests/rendering.zig` and `tests/all.zig`
+
+### Simple Interpolation
 
 ```zig
-const std = @import("std");
-const allocator = std.testing.allocator;
-const TestTmpl = zemplate.Template(struct { field: []const u8 });
-var tmpl = TestTmpl.init(.{ .field = "World" });
+const MyStruct = struct { field: []const u8 };
 
-const render = try tmpl.render(allocator,
-    \\ Hello ||zz .field zz||!
-, .{});
-
-defer allocator.free(render);
-std.debug.print("{s}", .{ render.items });
-```
-The output would be: "Hello World!"
-
-### Json Serialization
-There is also support for serializing fields as JSON, this is a newer feature and may have some bugs.
-```zig
-const std = @import("std");
-const allocator = std.testing.allocator;
-const TestTmpl = zemplate.Template(struct { field: struct{key: u32} });
-var tmpl = TestTmpl.init(.{ .field = .{ .key = 42 } });
-const render = try tmpl.render(
+var tmpl = try zemplate.Template.init(
     allocator,
-    \\Hello ||zz .field json zz||!
-, .{});
+    &MyStruct{ .field = "World" },
+    \\ Hello {|.field|}!
+, null);
+
+defer tmpl.deinit();
+
+const render = try tmpl.render(allocator);
 defer allocator.free(render);
 
-std.debug.print("{s}", .{ render });
+// Output: "Hello World!"
 ```
-The output would be: "Hello { "key": 42 }!"
 
+---
 
-## Notes
+### Loops Over Fields
 
-* Fields that you would like to render in your template from your context type must be `[]const u8`, `[]u8`, or `ArrayList(u8)`, otherwise the keyword `json` must be used in order to render the field.
-* For owned fields (`[]u8` or `ArrayList(u8)`), implement a deinit method on your context.
+```zig
+var tmpl = try zemplate.Template.init(
+    allocator,
+    &MyStruct{ .field = "World" },
+    \\ ||zz for .field zz||
+    \\ {|.|}
+    \\ ||zz endfor zz||
+, null);
+
+const render = try tmpl.render(allocator);
+defer allocator.free(render);
+
+// Output:
+// W
+// o
+// r
+// l
+// d
+```
+
+---
+
+### Nested Field Access
+
+```zig
+const Nested = struct { inner: []const u8 };
+const TestStruct = struct { field: Nested };
+
+var tmpl = try zemplate.Template.init(
+    allocator,
+    &TestStruct{ .field = .{ .inner = "World" } },
+    \\ Hello {|.field.inner|}!
+, null);
+
+const render = try tmpl.render(allocator);
+defer allocator.free(render);
+
+// Output: "Hello World!"
+```
+
+---
+
+### JSON Serialization
+
+```zig
+const Test = struct { field: struct { key: u32 } };
+
+var tmpl = try zemplate.Template.init(
+    allocator,
+    &Test{ .field = .{ .key = 42 } },
+    \\Hello {| .field json |}!
+, null);
+
+const render = try tmpl.render(allocator);
+defer allocator.free(render);
+
+// Output: "Hello {\"key\":42}!"
+```
+
+---
+
 
 ## Todos
-- [x] Associate templates with any struct, control template rendering via struct fields
-- [x] Basic string interpolation
-- [x] Json Rendering
-- [x] For loops
-- [ ] If statements
-- [ ] Template Context method access
-- [ ] Optimization
+
+- [x] Associate templates with any struct, control rendering via struct fields  
+- [x] Basic string interpolation  
+- [x] JSON rendering  
+- [x] For loops  
+- [ ] If statements  
+- [ ] Performance optimization
