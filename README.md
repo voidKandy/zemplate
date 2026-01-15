@@ -27,9 +27,9 @@ Originally created for my [portfolio site](https://github.com/voidKandy/zortfoli
 ```zig
 const MyStruct = struct { field: []const u8 };
 
-var tmpl = try zemplate.Template.init(
+var tmpl = try zemplate.Template(MyStruct).init(
     allocator,
-    &MyStruct{ .field = "World" },
+    .{ .field = "World" },
 );
 defer tmpl.deinit();
 
@@ -45,9 +45,9 @@ const render = try tmpl.render(
 ### Loops Over Fields
 
 ```zig
-var tmpl = try zemplate.Template.init(
+var tmpl = try zemplate.Template(MyStruct).init(
     allocator,
-    &MyStruct{ .field = "World" },
+    .{ .field = "World" },
 );
 defer tmpl.deinit();
 
@@ -73,9 +73,9 @@ const render = try tmpl.render(
 const Nested = struct { inner: []const u8 };
 const TestStruct = struct { field: Nested };
 
-var tmpl = try zemplate.Template.init(
+var tmpl = try zemplate.Template(TestStruct).init(
     allocator,
-    &TestStruct{ .field = .{ .inner = "World" } },
+    .{ .field = .{ .inner = "World" } },
 );
 defer tmpl.deinit();
 
@@ -93,9 +93,9 @@ const render = try tmpl.render(
 ```zig
 const Test = struct { field: struct { key: u32 } };
 
-var tmpl = try zemplate.Template.init(
+var tmpl = try zemplate.Template(Test).init(
     allocator,
-    &Test{ .field = .{ .key = 42 } },
+    .{ .field = .{ .key = 42 } },
 );
 defer tmpl.deinit();
 
