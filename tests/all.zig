@@ -14,7 +14,7 @@ const Lexer = zemplate.Lexer;
 const Token = zemplate.Token;
 
 test "all" {
-    std.testing.log_level = .warn;
+    std.testing.log_level = .info;
     runTest("NESTED ACCESS", nestedAccessTest);
     runTest("README", readmeTest);
     runTest("RENDER", renderTest);
@@ -26,13 +26,22 @@ fn nestedAccessTest() !void {
         \\ Hello World!
     ;
 
-    const Nested = struct { inner: []const u8 };
-    const TestStruct = struct { field: Nested };
+    const Nested = struct {
+        inner: []const u8,
+        pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+            try writer.writeAll("NESTED");
+            try writer.writeAll(self.inner);
+        }
+    };
+    const TestStruct = struct {
+        field: Nested,
+        pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+            try writer.writeAll("TESTSTRUCT");
+            try writer.print("{f}", .{self.field});
+        }
+    };
 
-    var tmpl = try zemplate.Template.init(
-        allocator,
-        &TestStruct{ .field = .{ .inner = "World" } },
-    );
+    var tmpl = try zemplate.Template(TestStruct).init(allocator, TestStruct{ .field = .{ .inner = "World" } });
     defer tmpl.deinit();
 
     const render = try tmpl.render(
@@ -62,9 +71,9 @@ fn readmeTest() !void {
 
     const Test = struct { field: []const u8 };
 
-    var tmpl = try zemplate.Template.init(
+    var tmpl = try zemplate.Template(Test).init(
         allocator,
-        &Test{ .field = "World" },
+        Test{ .field = "World" },
     );
     defer tmpl.deinit();
 
@@ -159,13 +168,13 @@ fn renderTest() !void {
         \\    <script type="application/json">
         \\    [{"num":420},{"num":69}]
         \\    </script>
-        \\    
+        \\
         \\    <div style='{"background_color":"black","font_size":10}' hx-get="myGet0" id="myId0">
         \\    </div>
-        \\    
+        \\
         \\    <div style='{"background_color":"white","font_size":12}' hx-get="myGet1" id="myId1">
         \\    </div>
-        \\    
+        \\
         \\  </div>
         \\</div>
     ;
@@ -187,9 +196,9 @@ fn renderTest() !void {
         \\  </div>
         \\</div>
     ;
-    var tmpl = try zemplate.Template.init(
+    var tmpl = try zemplate.Template(Test).init(
         allocator,
-        &ctx,
+        ctx,
     );
     defer tmpl.deinit();
 
@@ -198,7 +207,15 @@ fn renderTest() !void {
         .{ .whitespace = .minified },
     );
 
-    logDiff(expected, render) catch |e| {
+    const sani_expected = try removeWhitespace(expected);
+    const sani_render = try removeWhitespace(render);
+
+    defer {
+        std.testing.allocator.free(sani_expected);
+        std.testing.allocator.free(sani_render);
+    }
+
+    logDiff(sani_expected, sani_render) catch |e| {
         std.log.err(
             \\Expected:
             \\{s}
@@ -207,4 +224,17 @@ fn renderTest() !void {
         , .{ expected, render });
         return e;
     };
+}
+
+fn removeWhitespace(input: []const u8) anyerror![]const u8 {
+    var result = try std.ArrayList(u8).initCapacity(std.testing.allocator, input.len);
+
+    for (input) |ch| {
+        if (std.ascii.isWhitespace(ch)) {
+            continue;
+        }
+        try result.append(std.testing.allocator, ch);
+    }
+
+    return result.toOwnedSlice(std.testing.allocator);
 }

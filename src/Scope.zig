@@ -9,7 +9,7 @@ const comptimePrint = std.fmt.comptimePrint;
 instance: *const anyopaque,
 access_map: std.StaticStringMap(WriteAccessFunc),
 child_scopes: std.StaticStringMap(GetInnerScopeFunc),
-iterateFunc: error{NotIterable}!*const fn (@This()) Iterator,
+createIteratorFunc: ?*const fn (@This()) Iterator,
 const Scope = @This();
 
 pub const ScopeError = error{
@@ -31,7 +31,7 @@ const WriteAccessFunc = *const fn (
 ) (util.WriteError || error{NotPresent})!void;
 
 pub fn createIterator(self: @This()) error{NotIterable}!Iterator {
-    return (try self.iterateFunc)(self);
+    return if (self.createIteratorFunc) |f| f(self) else return error.NotIterable;
 }
 
 pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
@@ -67,24 +67,13 @@ pub fn init(
         \\
     , .{@typeName(DerefT)});
 
+    const BuilderType: ?type = Iterator.Builder(DerefT) catch null;
+
     const self = @This(){
         .instance = @ptrCast(val),
         .access_map = std.StaticStringMap(WriteAccessFunc).init(access_kvs, a) catch return error.OutOfMemory,
         .child_scopes = std.StaticStringMap(GetInnerScopeFunc).init(child_kvs, a) catch return error.OutOfMemory,
-        .iterateFunc = blk: {
-            const Builder = Iterator.Builder(DerefT) catch |e| break :blk e;
-            break :blk &struct {
-                fn call(scope: Scope) Iterator {
-                    const info = Builder.ptrInfo(scope.instance);
-                    return .{
-                        .nextFunc = &Builder.next,
-                        .visitFunc = &Builder.visit,
-                        .base_ptr = info.base_ptr,
-                        .len = info.len,
-                    };
-                }
-            }.call;
-        },
+        .createIteratorFunc = if (BuilderType) |B| B.initFromScope else null,
     };
     return self;
 }
@@ -223,9 +212,8 @@ inline fn buildScopeChainItem(
     return &struct {
         fn call(a: Allocator, s: Scope) error{OutOfMemory}!Scope {
             const inst: *const T = @ptrCast(@alignCast(s.instance));
-            const field = @field(inst, fieldname);
 
-            const scope = try Scope.init(&field, a);
+            const scope = try Scope.init(&@field(inst, fieldname), a);
             return scope;
         }
     }.call;
@@ -273,10 +261,13 @@ inline fn buildAccessChainItem(
 ) WalkToInstanceFunc {
     return &struct {
         fn call(inst: *const anyopaque) error{NotPresent}!*const anyopaque {
+            log.debug(
+                \\ Dereferencing ptr: {any} as {s}
+            , .{ inst, @typeName(T) });
             const val: *const T = @ptrCast(@alignCast(inst));
+            if (@hasDecl(T, "format")) log.warn("{f}", .{val});
             if (!@hasField(T, fieldname)) return error.NotPresent;
-            const field = @field(val, fieldname);
-            return @ptrCast(&field);
+            return @ptrCast(&@field(val, fieldname));
         }
     }.call;
 }
@@ -315,9 +306,9 @@ inline fn accessMapKvsCount(comptime T: type) usize {
         .@"struct" => {
             const FIELDS = @typeInfo(T).@"struct".fields;
 
-            const N_NESTED = blk: {
-                comptime var i: usize = 0;
-                inline for (FIELDS) |f|
+            const N_NESTED = comptime blk: {
+                var i: usize = 0;
+                for (FIELDS) |f|
                     i += accessMapKvsCount(f.type) - 1;
                 break :blk i;
             };
@@ -356,21 +347,21 @@ inline fn accessMapKvs(comptime Root: type, comptime T: type, comptime basename:
 
             const OUT_SIZE = accessMapKvsCount(T);
 
-            const arr: [OUT_SIZE]struct { []const u8, WriteAccessFunc } = blk: {
+            const arr: [OUT_SIZE]struct { []const u8, WriteAccessFunc } = comptime blk: {
                 var tmp: [OUT_SIZE]struct { []const u8, WriteAccessFunc } = undefined;
                 tmp[0] = .{
                     basename,
                     accessBase,
                 };
                 var i: usize = 1;
-                inline for (FIELDS) |f| {
+                for (FIELDS) |f| {
                     const name = if (basename.len == 1)
                         comptimePrint("{s}{s}", .{ basename, f.name })
                     else
                         comptimePrint("{s}.{s}", .{ basename, f.name });
 
                     const entries = accessMapKvs(Root, f.type, name);
-                    inline for (entries) |kv| {
+                    for (entries) |kv| {
                         tmp[i] = kv;
                         i += 1;
                     }

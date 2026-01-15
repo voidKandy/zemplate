@@ -79,7 +79,13 @@ pub inline fn writeType(
 
     if (print_json) {
         const end_before = writer.end;
-        try std.json.Stringify.value(inst, json_opts, writer);
+        log.debug(
+            \\ Attempting to serialize to json
+        , .{});
+        std.json.Stringify.value(inst, json_opts, writer) catch |e| {
+            log.err("Failed to serialize to json: {s}", .{@errorName(e)});
+            return e;
+        };
         log.debug("Wrote JSON to writer: {s}", .{writer.buffer[end_before..writer.end]});
         return;
     }
@@ -87,9 +93,6 @@ pub inline fn writeType(
     const info = @typeInfo(T);
     switch (info) {
         .array => |a| {
-            log.debug(
-                \\ array type
-            , .{});
             if (a.child == u8) {
                 const bytes =
                     if (a.sentinel()) |sent|
@@ -97,7 +100,7 @@ pub inline fn writeType(
                     else
                         inst[0..];
 
-                log.debug("Bytes: {s}", .{bytes});
+                log.debug("Array Bytes: {s}", .{bytes});
                 try writer.writeAll(bytes);
                 return;
             }
@@ -112,7 +115,7 @@ pub inline fn writeType(
             if (ptr.child == u8) {
                 switch (ptr.size) {
                     .slice => {
-                        log.debug("Bytes: {s}", .{inst});
+                        log.debug("Slice Bytes: {s}", .{inst});
                         try writer.writeAll(inst);
 
                         return;

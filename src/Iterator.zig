@@ -5,20 +5,28 @@ const root = @import("root.zig");
 const Allocator = std.mem.Allocator;
 const Error = root.Error;
 
-/// @argument1: `Scope.instance`
-nextFunc: *const fn (*@This()) ?*const anyopaque,
-/// @argument1: return value of `nextFunc`
+idx: usize = 0,
+base_ptr: *const anyopaque,
+stride: usize,
+len: usize,
+/// @argument1: return value of `next`
 /// @argument2: function pointer coerced to `*anyopaque`
 /// @argument3: second argument of function coerced to `*anyopaque`
 visitFunc: *const fn (Allocator, *const anyopaque, *const anyopaque, *anyopaque) Error!void,
-idx: usize = 0,
-base_ptr: usize,
-len: usize,
 
 const Iterator = @This();
 
 pub fn next(self: *@This()) ?*const anyopaque {
-    return self.nextFunc(self);
+    if (self.idx >= self.len) return null;
+    const item_ptr: *const anyopaque = @ptrFromInt(@intFromPtr(self.base_ptr) + self.idx * self.stride);
+
+    self.idx += 1;
+
+    return item_ptr;
+}
+
+pub fn format(self: Iterator, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    try writer.print("Iterator {{ base_ptr = {any}, idx = {}, len = {} }}", .{ self.base_ptr, self.idx, self.len });
 }
 
 pub fn visit(
@@ -36,7 +44,7 @@ pub fn visit(
     );
 }
 
-pub inline fn UnwrapIterableChild(comptime T: type) ?type {
+inline fn UnwrapIterableChild(comptime T: type) ?type {
     const info = @typeInfo(T);
     const child_opt: ?type = blk: {
         switch (info) {
@@ -57,59 +65,67 @@ pub inline fn Builder(
 ) error{NotIterable}!type {
     const type_info = @typeInfo(T);
     const ItemType = UnwrapIterableChild(T) orelse return error.NotIterable;
+    const stride = @sizeOf(ItemType);
+
+    const PointerInfo =
+        struct {
+            base_ptr: *const anyopaque,
+            len: usize,
+        };
 
     return struct {
-        pub fn ptrInfo(ptr: *const anyopaque) struct {
-            base_ptr: usize,
-            len: usize,
-        } {
+        pub fn initFromScope(scope: Scope) Iterator {
+            const info = ptrInfo(scope.instance);
+            log.debug(
+                \\ info
+                \\len: {d}
+            , .{info.len});
+
+            return .{
+                .visitFunc = &@This().visit,
+                .base_ptr = info.base_ptr,
+                .len = info.len,
+                .stride = stride,
+            };
+        }
+
+        fn ptrInfo(ptr: *const anyopaque) PointerInfo {
             switch (type_info) {
                 .array => |ar| {
                     // iter.ptr points to the array itself
                     return .{
-                        .base_ptr = @intFromPtr(ptr),
+                        .base_ptr = ptr,
                         .len = ar.len,
                     };
                 },
                 .pointer => |p| {
                     switch (p.size) {
                         .slice => {
+
                             // iter.ptr points to SLICE STRUCT, not data
                             const slice: *const T = @ptrCast(@alignCast(ptr));
+                            log.debug("ptrInfo: ptr={*}, slice.ptr={*}, slice.len={d}", .{ ptr, slice.ptr, slice.len });
                             return .{
-                                .base_ptr = @intFromPtr(slice.ptr),
+                                .base_ptr = slice.ptr,
                                 .len = slice.len,
                             };
                         },
                         else => {
-                            log.err(
+                            @compileError(std.fmt.comptimePrint(
                                 \\ No branch for pointer of size {s}
-                            , .{@tagName(ptr.size)});
-                            return null;
+                            , .{@tagName(ptr.size)}));
                         },
                     }
                 },
                 else => {
-                    log.err(
+                    @compileError(std.fmt.comptimePrint(
                         \\ No branch for {s}
-                    , .{@tagName(type_info)});
-                    return null;
+                    , .{@tagName(type_info)}));
                 },
             }
         }
 
-        pub fn next(iter: *Iterator) ?*const anyopaque {
-            if (iter.idx >= iter.len) return null;
-            const item_ptr: *const anyopaque = @ptrFromInt(iter.base_ptr + iter.idx * @sizeOf(ItemType));
-
-            _ = @as(*const ItemType, @ptrCast(@alignCast(item_ptr)));
-
-            iter.idx += 1;
-
-            return item_ptr;
-        }
-
-        pub fn visit(
+        fn visit(
             a: Allocator,
             item: *const anyopaque,
             f: *const anyopaque,
