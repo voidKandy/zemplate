@@ -1,11 +1,12 @@
 const std = @import("std");
-const root = @import("root.zig");
-const util = @import("util.zig");
-const Iterator = @import("Iterator.zig");
 const Allocator = std.mem.Allocator;
-const log = std.log.scoped(.Scope);
 const comptimePrint = std.fmt.comptimePrint;
 
+const Iterator = @import("Iterator.zig");
+const root = @import("root.zig");
+const util = @import("util.zig");
+
+const log = std.log.scoped(.Scope);
 instance: *const anyopaque,
 access_map: std.StaticStringMap(WriteAccessFunc),
 child_scopes: std.StaticStringMap(GetInnerScopeFunc),
@@ -66,6 +67,25 @@ pub fn init(
         \\ {s} SCOPE INIT
         \\
     , .{@typeName(DerefT)});
+    log.info(
+        \\ Access KVS
+    , .{});
+    for (access_kvs) |kv| {
+        log.info(
+            \\ Key: {s}
+            \\ Value: {any}
+        , .{ kv.@"0", kv.@"1" });
+    }
+
+    log.info(
+        \\ Child Scopes KVS
+    , .{});
+    for (child_kvs) |kv| {
+        log.info(
+            \\ Key: {s}
+            \\ Value: {any}
+        , .{ kv.@"0", kv.@"1" });
+    }
 
     const BuilderType: ?type = Iterator.Builder(DerefT) catch null;
 
@@ -109,8 +129,6 @@ inline fn childScopesKvsCount(comptime Root: type, comptime T: type) usize {
         .@"struct" => blk: {
             comptime var i: usize = if (T == Root) 0 else 1;
             inline for (@typeInfo(T).@"struct".fields) |f| {
-                // if (@typeInfo(f.type) == .@"struct") i += 1;
-                // i += 1;
                 const c = childScopesKvsCount(Root, f.type);
                 i += c;
             }
@@ -212,7 +230,6 @@ inline fn buildScopeChainItem(
     return &struct {
         fn call(a: Allocator, s: Scope) error{OutOfMemory}!Scope {
             const inst: *const T = @ptrCast(@alignCast(s.instance));
-
             const scope = try Scope.init(&@field(inst, fieldname), a);
             return scope;
         }
