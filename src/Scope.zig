@@ -1,12 +1,12 @@
 const std = @import("std");
-const Allocator = std.mem.Allocator;
+const log = std.log.scoped(.Scope);
 const comptimePrint = std.fmt.comptimePrint;
+const Allocator = std.mem.Allocator;
 
 const Iterator = @import("Iterator.zig");
 const root = @import("root.zig");
 const util = @import("util.zig");
 
-const log = std.log.scoped(.Scope);
 instance: *const anyopaque,
 access_map: std.StaticStringMap(WriteAccessFunc),
 child_scopes: std.StaticStringMap(GetInnerScopeFunc),
@@ -22,7 +22,7 @@ pub const ScopeError = error{
 const GetInnerScopeFunc = *const fn (
     Allocator,
     Scope,
-) error{OutOfMemory}!Scope;
+) error{ OutOfMemory, NotPresent }!Scope;
 
 const WriteAccessFunc = *const fn (
     *std.Io.Writer,
@@ -35,6 +35,27 @@ pub fn createIterator(self: @This()) error{NotIterable}!Iterator {
     return if (self.createIteratorFunc) |f| f(self) else return error.NotIterable;
 }
 
+pub fn getChildScope(self: @This(), a: Allocator, key: []const u8) ScopeError!Scope {
+    const func = self.child_scopes.get(key) orelse {
+        log.err(
+            \\ Tried to get child scope with key '{s}' but it was not present.
+            \\ Scope: {any}
+        , .{ key, self });
+        return error.NotPresent;
+    };
+    return func(a, self);
+}
+
+pub fn writeAccess(
+    self: @This(),
+    key: []const u8,
+    w: *std.Io.Writer,
+    json_opts: std.json.Stringify.Options,
+    print_json: bool,
+) ScopeError!void {
+    const func = self.access_map.get(key) orelse return error.NotPresent;
+    return func(w, self, json_opts, print_json);
+}
 pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try writer.writeAll("Access Map:");
     for (self.access_map.keys()) |k| {
@@ -60,28 +81,30 @@ pub fn init(
         \\ .init method expected `val` argument to be a pointer to some type
     );
     const DerefT = util.Deref(@TypeOf(val));
-    const access_kvs = accessMapKvs(DerefT, DerefT, ".");
-    const child_kvs = childScopesKvs(DerefT, DerefT, ".");
+    const access_kvs = comptime accessMapKvs(DerefT, DerefT, ".");
+    const child_kvs = comptime childScopesKvs(DerefT, DerefT, ".");
 
     log.debug(
-        \\ {s} SCOPE INIT
         \\
+        \\ {s} SCOPE INIT
     , .{@typeName(DerefT)});
-    log.info(
+    log.debug(
         \\ Access KVS
+        \\
     , .{});
     for (access_kvs) |kv| {
-        log.info(
+        log.debug(
             \\ Key: {s}
             \\ Value: {any}
         , .{ kv.@"0", kv.@"1" });
     }
 
-    log.info(
+    log.debug(
         \\ Child Scopes KVS
+        \\
     , .{});
     for (child_kvs) |kv| {
-        log.info(
+        log.debug(
             \\ Key: {s}
             \\ Value: {any}
         , .{ kv.@"0", kv.@"1" });
@@ -105,25 +128,6 @@ pub fn deinit(self: @This(), a: Allocator) void {
         self.child_scopes.deinit(a);
 }
 
-pub fn getChildScope(self: @This(), a: Allocator, key: []const u8) ScopeError!Scope {
-    const func = self.child_scopes.get(key) orelse return error.NotPresent;
-    return func(a, self);
-}
-
-pub fn writeAccess(
-    self: @This(),
-    key: []const u8,
-    w: *std.Io.Writer,
-    json_opts: std.json.Stringify.Options,
-    print_json: bool,
-) ScopeError!void {
-    const func = self.access_map.get(key) orelse return error.NotPresent;
-    return func(w, self, json_opts, print_json);
-}
-
-/// --- Private methods & Declarations for building Scope ---
-///
-///
 inline fn childScopesKvsCount(comptime Root: type, comptime T: type) usize {
     return switch (@typeInfo(T)) {
         .@"struct" => blk: {
@@ -134,7 +138,7 @@ inline fn childScopesKvsCount(comptime Root: type, comptime T: type) usize {
             }
             break :blk i;
         },
-        .pointer, .array => 1,
+        .pointer, .array => if (Root != T) 1 else 0,
         else => 0,
     };
 }
@@ -150,44 +154,47 @@ inline fn childScopesKvs(
     const arr: [OUT_SIZE]struct { []const u8, GetInnerScopeFunc } = comptime blk: {
         var tmp: [OUT_SIZE]struct { []const u8, GetInnerScopeFunc } = undefined;
         if (OUT_SIZE == 0) break :blk tmp;
+
         if (basename.len > 1) {
-            tmp[0] = .{
-                basename,
-                flattenScopeWalkerFunctionChain(
-                    &buildScopeWalkerFunctionChain(Root, basename),
-                ),
-            };
+            util.compileLogPrint(
+                \\ Pushing {s} as root basename
+            , .{basename});
+            const func =
+                flattenInstanceWalkerChainToGetChildScopeFunc(
+                    T,
+                    &buildInstanceWalkerFunctionChain(Root, basename),
+                );
+            tmp[0] = .{ basename, func };
         }
 
-        const info = @typeInfo(T);
-        switch (info) {
-            .pointer, .array => break :blk tmp,
+        switch (@typeInfo(T)) {
+            .@"struct" => |st| {
+                var i: usize = if (basename.len > 1) 1 else 0;
+                for (st.fields) |f| {
+                    util.compileLogPrint("FIELD: {s}", .{f.name});
+
+                    const expected_size = childScopesKvsCount(Root, f.type);
+                    if (expected_size == 0) {
+                        util.compileLogPrint("SIZE == 0", .{});
+                        continue;
+                    }
+
+                    const nested_basename = if (basename.len == 1)
+                        basename ++ f.name
+                    else
+                        basename ++ "." ++ f.name;
+
+                    const nested = childScopesKvs(Root, f.type, nested_basename);
+                    for (nested) |kv| {
+                        tmp[i] = kv;
+                        i += 1;
+                    }
+                }
+            },
             else => {},
         }
 
-        var i: usize = if (basename.len > 1) 1 else 0;
-        for (info.@"struct".fields) |f| {
-            util.compileLogPrint("FIELD: {s}", .{f.name});
-
-            const expected_size = childScopesKvsCount(Root, f.type);
-            if (expected_size == 0) {
-                util.compileLogPrint("SIZE == 0", .{});
-                continue;
-            }
-
-            const nested_basename = if (basename.len == 1)
-                comptimePrint("{s}{s}", .{ basename, f.name })
-            else
-                comptimePrint("{s}.{s}", .{ basename, f.name });
-
-            const nested = childScopesKvs(Root, f.type, nested_basename);
-            for (nested) |kv| {
-                tmp[i] = kv;
-                i += 1;
-            }
-        }
-
-        if (i != OUT_SIZE) @compileError(comptimePrint(
+        if (tmp.len != OUT_SIZE) @compileError(comptimePrint(
             \\ entry count of of {s} does not match expected
             \\ i != {d}
         , .{ @typeName(T), OUT_SIZE }));
@@ -195,127 +202,6 @@ inline fn childScopesKvs(
         break :blk tmp;
     };
     return arr;
-}
-
-inline fn basenameToFields(comptime basename: []const u8) [util.countPeriods(basename)][]const u8 {
-    comptime var fields: [util.countPeriods(basename)][]const u8 = undefined;
-    comptime var last = 1;
-    comptime var k = 0;
-    inline for (basename, 0..) |ch, i| {
-        if (ch == '.') {
-            if (i > last) {
-                fields[k] = basename[last..i];
-                k += 1;
-                last = i + 1;
-            } else last = i + 1;
-        }
-    }
-
-    if (last < basename.len) {
-        fields[k] = basename[last..];
-        k += 1;
-    }
-
-    if (k != util.countPeriods(basename)) @compileError(comptimePrint(
-        \\ Expected to have array of {d} fields got {d} for '{s}'
-    , .{ util.countPeriods(basename), k, basename }));
-
-    return fields;
-}
-
-inline fn buildScopeChainItem(
-    comptime T: type,
-    comptime fieldname: []const u8,
-) GetInnerScopeFunc {
-    return &struct {
-        fn call(a: Allocator, s: Scope) error{OutOfMemory}!Scope {
-            const inst: *const T = @ptrCast(@alignCast(s.instance));
-            const scope = try Scope.init(&@field(inst, fieldname), a);
-            return scope;
-        }
-    }.call;
-}
-
-inline fn buildScopeWalkerFunctionChain(
-    comptime Root: type,
-    comptime basename: []const u8,
-) [util.countPeriods(basename)]GetInnerScopeFunc {
-    const fields = comptime basenameToFields(basename);
-    comptime var funcs: [util.countPeriods(basename)]GetInnerScopeFunc = undefined;
-
-    comptime var Ty: type = Root;
-    inline for (fields, 0..) |name, i| {
-        funcs[i] = buildScopeChainItem(Ty, name);
-        Ty = @FieldType(Ty, name);
-    }
-    return funcs;
-}
-
-inline fn flattenScopeWalkerFunctionChain(
-    comptime funcs: []const GetInnerScopeFunc,
-) GetInnerScopeFunc {
-    return &struct {
-        fn call(
-            a: Allocator,
-            s: Scope,
-        ) error{OutOfMemory}!Scope {
-            var sc: Scope = s;
-            inline for (funcs, 0..) |f, i| {
-                sc = try f(a, sc);
-                defer if (i < funcs.len - 1) sc.deinit(a);
-            }
-            return sc;
-        }
-    }.call;
-}
-
-const WalkToInstanceFunc =
-    *const fn (*const anyopaque) error{NotPresent}!*const anyopaque;
-
-inline fn buildAccessChainItem(
-    comptime T: type,
-    comptime fieldname: []const u8,
-) WalkToInstanceFunc {
-    return &struct {
-        fn call(inst: *const anyopaque) error{NotPresent}!*const anyopaque {
-            log.debug(
-                \\ Dereferencing ptr: {any} as {s}
-            , .{ inst, @typeName(T) });
-            const val: *const T = @ptrCast(@alignCast(inst));
-            if (@hasDecl(T, "format")) log.warn("{f}", .{val});
-            if (!@hasField(T, fieldname)) return error.NotPresent;
-            return @ptrCast(&@field(val, fieldname));
-        }
-    }.call;
-}
-
-inline fn buildAccessWalkerFunctionChain(
-    comptime Root: type,
-    comptime basename: []const u8,
-) [util.countPeriods(basename)]WalkToInstanceFunc {
-    const fields = comptime basenameToFields(basename);
-    comptime var funcs: [util.countPeriods(basename)]WalkToInstanceFunc = undefined;
-
-    comptime var Ty: type = Root;
-    inline for (fields, 0..) |name, i| {
-        funcs[i] = buildAccessChainItem(Ty, name);
-        Ty = @FieldType(Ty, name);
-    }
-    return funcs;
-}
-
-inline fn flattenAccessWalkerFunctionChain(
-    comptime funcs: []const WalkToInstanceFunc,
-) WalkToInstanceFunc {
-    return &struct {
-        fn call(inst: *const anyopaque) error{NotPresent}!*const anyopaque {
-            var val: *const anyopaque = inst;
-            inline for (funcs) |f| {
-                val = try f(val);
-            }
-            return val;
-        }
-    }.call;
 }
 
 inline fn accessMapKvsCount(comptime T: type) usize {
@@ -336,7 +222,11 @@ inline fn accessMapKvsCount(comptime T: type) usize {
     }
 }
 
-inline fn accessMapKvs(comptime Root: type, comptime T: type, comptime basename: []const u8) [accessMapKvsCount(T)]struct { []const u8, WriteAccessFunc } {
+inline fn accessMapKvs(
+    comptime Root: type,
+    comptime T: type,
+    comptime basename: []const u8,
+) [accessMapKvsCount(T)]struct { []const u8, WriteAccessFunc } {
     const accessBase: WriteAccessFunc = &struct {
         fn call(
             w: *std.Io.Writer,
@@ -349,8 +239,8 @@ inline fn accessMapKvs(comptime Root: type, comptime T: type, comptime basename:
                 return try util.writeType(T, val.*, w, json_opts, print_json);
             }
 
-            const inst = try flattenAccessWalkerFunctionChain(
-                &buildAccessWalkerFunctionChain(Root, basename),
+            const inst = try flattenInstanceWalkerFunctionChain(
+                &buildInstanceWalkerFunctionChain(Root, basename),
             )(s.instance);
 
             const val: *const T = @ptrCast(@alignCast(inst));
@@ -390,6 +280,96 @@ inline fn accessMapKvs(comptime Root: type, comptime T: type, comptime basename:
         },
         else => return [1]struct { []const u8, WriteAccessFunc }{.{ basename, accessBase }},
     }
+}
+
+inline fn basenameToFields(comptime basename: []const u8) [util.countPeriods(basename)][]const u8 {
+    comptime var fields: [util.countPeriods(basename)][]const u8 = undefined;
+    comptime var last = 1;
+    comptime var k = 0;
+    inline for (basename, 0..) |ch, i| {
+        if (ch == '.') {
+            if (i > last) {
+                fields[k] = basename[last..i];
+                k += 1;
+                last = i + 1;
+            } else last = i + 1;
+        }
+    }
+
+    if (last < basename.len) {
+        fields[k] = basename[last..];
+        k += 1;
+    }
+
+    if (k != util.countPeriods(basename)) @compileError(comptimePrint(
+        \\ Expected to have array of {d} fields got {d} for '{s}'
+    , .{ util.countPeriods(basename), k, basename }));
+
+    return fields;
+}
+
+const WalkToInstanceFunc = *const fn (*const anyopaque) error{NotPresent}!*const anyopaque;
+
+inline fn buildInstanceWalkerChainItem(
+    comptime T: type,
+    comptime fieldname: []const u8,
+) WalkToInstanceFunc {
+    return &struct {
+        fn call(inst: *const anyopaque) error{NotPresent}!*const anyopaque {
+            log.debug(
+                \\ Dereferencing ptr: {any} as {s}
+            , .{ inst, @typeName(T) });
+            if (!@hasField(T, fieldname)) return error.NotPresent;
+            return @ptrCast(&@field(@as(*const T, @ptrCast(@alignCast(inst))), fieldname));
+        }
+    }.call;
+}
+
+inline fn buildInstanceWalkerFunctionChain(
+    comptime Root: type,
+    comptime basename: []const u8,
+) [util.countPeriods(basename)]WalkToInstanceFunc {
+    const fields = comptime basenameToFields(basename);
+    comptime var funcs: [util.countPeriods(basename)]WalkToInstanceFunc = undefined;
+
+    comptime var Ty: type = Root;
+    inline for (fields, 0..) |name, i| {
+        funcs[i] = buildInstanceWalkerChainItem(Ty, name);
+        Ty = @FieldType(Ty, name);
+    }
+    return funcs;
+}
+
+inline fn flattenInstanceWalkerChainToGetChildScopeFunc(
+    comptime T: type,
+    comptime funcs: []const WalkToInstanceFunc,
+) GetInnerScopeFunc {
+    return &struct {
+        fn call(
+            a: Allocator,
+            s: Scope,
+        ) error{ OutOfMemory, NotPresent }!Scope {
+            var inst: *const anyopaque = s.instance;
+            inline for (funcs) |f| {
+                inst = try f(inst);
+            }
+            return Scope.init(@as(*const T, @ptrCast(@alignCast(inst))), a);
+        }
+    }.call;
+}
+
+inline fn flattenInstanceWalkerFunctionChain(
+    comptime funcs: []const WalkToInstanceFunc,
+) WalkToInstanceFunc {
+    return &struct {
+        fn call(inst: *const anyopaque) error{NotPresent}!*const anyopaque {
+            var val: *const anyopaque = inst;
+            inline for (funcs) |f| {
+                val = try f(val);
+            }
+            return val;
+        }
+    }.call;
 }
 
 test "counts correct" {
