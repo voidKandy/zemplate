@@ -4,7 +4,6 @@ const comptimePrint = std.fmt.comptimePrint;
 const Allocator = std.mem.Allocator;
 
 const Iterator = @import("Iterator.zig");
-const Accessor = @import("Accessor.zig");
 const Conditional = @import("Conditional.zig");
 const root = @import("root.zig");
 const ast = @import("ast.zig");
