@@ -1,7 +1,7 @@
 # Zemplate
 > A minimal, zero-dependency templating engine written in Zig.
 
-`zemplate` leverages Zig’s **comptime** capabilities to build a function graph for efficient template rendering. Templates can access nested fields, run loops, and serialize fields to JSON — all with zero runtime reflection.
+`zemplate` leverages Zig’s **comptime** capabilities to build a function graph for efficient template rendering. Templates can access nested fields, iterate over values, evaluate conditionals, and render string literals — all with zero runtime reflection.
 
 Originally created for my [portfolio site](https://github.com/voidKandy/zortfolio), `zemplate` became its own project because the model is flexible and extensible.
 
@@ -9,18 +9,38 @@ Originally created for my [portfolio site](https://github.com/voidKandy/zortfoli
 
 ## Concepts
 
-- **Scope**: Every template has a root scope for its context struct. Loops and conditional blocks create child scopes.  
-  - `.` accesses the current scope’s root  
-  - `.<field>` accesses a field in the current scope  
-- **Statements vs Expressions**:  
-  - **Expressions**: `{| <expression> |}` — used for rendering values  
-  - **Statements**: `||zz <statement> zz||` — used for loops or control flow  
-- **JSON Serialization**: `{| .field json |}` serializes a field to JSON. Whitespace control only applies to JSON output.
+- **Scope**  
+  Every template has a root scope derived from the provided context struct.  
+  Loops and conditional blocks create child scopes.
+  - Scope is resolved by leading periods:
+    - `.` = current scope
+    - `..` = parent scope
+    - more periods walk upward
+  - Appending a field accesses that scope’s field (`..field`)
+
+- **Statements vs Expressions**
+  - **Expressions**: `{| <expression> |}`  
+    Used to render values into the output.
+  - **Statements**: `||zz <statement> zz||`  
+    Used for control flow such as loops and conditionals.
+
+- **Truthiness & Optionals**
+  - Optional fields (`?T`) may be used directly in `if` statements
+  - `null` evaluates as false
+  - Booleans behave as expected
+
+- **String Literals & Comparisons**
+  - Single-quoted string literals are supported *inside statements* : `'example'`
+  - Equality and comparison operators may be used in conditionals
+
+- **JSON Serialization**
+  - `{| .field json |}` serializes a field to JSON
+  - serialization options are passed to the `render` function
 
 ---
 
 ## Template Syntax Examples
-> There are more great usage examples in `tests/rendering.zig` and `tests/all.zig`
+> More complete examples can be found in `tests/rendering.zig` and `tests/all.zig`
 
 ### Simple Interpolation
 
@@ -44,6 +64,8 @@ const render = try tmpl.render(
 
 ### Loops Over Fields
 
+slices and arrays are iterable and will be rendered item-by-item:
+
 ```zig
 var tmpl = try zemplate.Template(MyStruct).init(
     allocator,
@@ -63,6 +85,57 @@ const render = try tmpl.render(
 // r
 // l
 // d
+```
+
+---
+
+### Conditional Rendering
+
+```zig
+const Test = struct {
+    opt: ?[]const u8,
+};
+
+var tmpl = try zemplate.Template(Test).init(
+    allocator,
+    .{ .opt = "optional" },
+);
+defer tmpl.deinit();
+
+const render = try tmpl.render(
+    \\ ||zz if .opt zz||
+    \\ {|.|}
+    \\ ||zz endif zz||
+, .{});
+
+// Output:
+// optional
+```
+
+---
+
+### Comparisons & String Literals
+
+```zig
+const Test = struct {
+    value: u32,
+    inner: struct { text: []const u8 },
+};
+
+var tmpl = try zemplate.Template(Test).init(
+    allocator,
+    .{ .value = 42, .inner = .{ .text = "inner string" } },
+);
+defer tmpl.deinit();
+
+const render = try tmpl.render(
+    \\ ||zz if .value == 42 zz||
+    \\ {|.value|} == 42
+    \\ ||zz endif zz||
+    \\ ||zz if .inner.text == 'inner string' zz||
+    \\ {|.inner.text|} == 'inner string'
+    \\ ||zz endif zz||
+, .{});
 ```
 
 ---
@@ -100,21 +173,20 @@ var tmpl = try zemplate.Template(Test).init(
 defer tmpl.deinit();
 
 const render = try tmpl.render(
-    \\Hello {| .field json |}!
+    \\ Hello {| .field json |}!
 , .{});
-
 
 // Output: "Hello {\"key\":42}!"
 ```
 
 ---
 
-
 ## Todos
 
-- [x] Associate templates with any struct, control rendering via struct fields  
-- [x] Basic string interpolation  
-- [x] JSON rendering  
-- [x] For loops  
-- [ ] If statements  
+- [x] Associate templates with any struct
+- [x] Basic string interpolation
+- [x] JSON rendering
+- [x] For loops
+- [x] If statements
+- [x] String literals
 - [ ] Performance optimization
