@@ -340,7 +340,7 @@ fn initCases(a: std.mem.Allocator) std.mem.Allocator.Error![]ParserTestCase {
             \\ ||zz endif zz||
             \\ ||zz if .something == -50 zz||
             \\ ||zz endif zz||
-            \\ ||zz if .something == "Hello" zz||
+            \\ ||zz if .something == 'Hello' zz||
             \\ ||zz endif zz||
             ,
             .expected_statements = try a.dupe(ast.Statement, &[_]ast.Statement{

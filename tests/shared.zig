@@ -9,7 +9,7 @@ pub fn runTest(comptime name: []const u8, run_fn: anytype) void {
 
     run_fn() catch |e| {
         log.err(
-            \\ {s}'{s}' Test {s}FAILED{s} 
+            \\ {s}'{s}' Test {s}FAILED{s}
             \\
         , .{ ansi.RED, name, ansi.BOLD, ansi.RESET });
         @panic(@errorName(e));
@@ -44,12 +44,18 @@ pub fn logDiff(expected: []const u8, actual: []const u8) !void {
         std.log.err("Expected context ({}..{}): \"{s}\"", .{ start, end_expected, exp_ctx });
         std.log.err("Actual   context ({}..{}): \"{s}\"", .{ start, end_actual, act_ctx });
 
-        std.log.err("Expected char: '{c}' (byte {d})", .{
-            expected[idx], expected[idx],
-        });
-        std.log.err("Actual   char: '{c}' (byte {d})", .{
-            actual[idx], actual[idx],
-        });
+        if (expected.len <= idx)
+            std.log.err("Expected is too short", .{})
+        else
+            std.log.err("Expected char: '{c}' (byte {d})", .{
+                expected[idx], expected[idx],
+            });
+        if (actual.len <= idx)
+            std.log.err("Actual is too short", .{})
+        else
+            std.log.err("Actual   char: '{c}' (byte {d})", .{
+                actual[idx], actual[idx],
+            });
 
         return error.DiffExists;
     }

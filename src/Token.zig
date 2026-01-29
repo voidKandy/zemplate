@@ -31,6 +31,7 @@ pub const Type = enum {
     space,
     tab,
     newline,
+    string_wrapper,
     literal,
     access,
     statement_open,

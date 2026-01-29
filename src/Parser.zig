@@ -414,9 +414,9 @@ fn parseExpressionStatement(self: *Self) ParseError!?ast.ExpressionStatement {
         switch (self.current_token.type) {
             .literal => {
                 const literal_expr =
-                    ast.LiteralExpression.tryFromLiteral(self.current_token.literal) orelse {
+                    ast.LiteralExpression.tryFromLiteral(self.current_token.literal, false) orelse {
                         try self.emitError(
-                            \\ Failed to parse literal expression from string literal: '{s}'
+                            \\ Failed to parse literal expression from literal: '{s}'
                         , .{self.current_token.literal});
                         return null;
                     };
@@ -430,6 +430,21 @@ fn parseExpressionStatement(self: *Self) ParseError!?ast.ExpressionStatement {
                 self.arena.allocator(),
                 .{ .access = try self.parseAccessExpression() orelse return null },
             ),
+            .string_wrapper => {
+                self.progressToken();
+                _ = try self.expectCurrent(.literal);
+                const string_literal =
+                    ast.LiteralExpression.tryFromLiteral(self.current_token.literal, true) orelse {
+                        try self.emitError(
+                            \\ Failed to parse string literal expression from literal: '{s}'
+                        , .{self.current_token.literal});
+                        return null;
+                    };
+                const expr = try ast.ExpressionStatement.create(self.arena.allocator(), .{ .literal = string_literal });
+                _ = try self.expectPeekAndProgress(.string_wrapper);
+                self.progressTokenSkipWhitespace();
+                break :blk expr;
+            },
             else => {
                 try self.emitError(
                     \\ Cannot parse expression statement starting with token: {any}

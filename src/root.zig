@@ -9,4 +9,6 @@ pub const Parser = @import("Parser.zig");
 pub const Token = @import("Token.zig");
 pub const Template = template.Template;
 
-pub const Error = Parser.ParseError || Scope.ScopeError;
+
+
+pub const Error = Parser.ParseError || Scope.ScopeError || error{NotWritable};

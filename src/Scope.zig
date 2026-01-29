@@ -4,13 +4,18 @@ const comptimePrint = std.fmt.comptimePrint;
 const Allocator = std.mem.Allocator;
 
 const Iterator = @import("Iterator.zig");
+const Accessor = @import("Accessor.zig");
+const Conditional = @import("Conditional.zig");
 const root = @import("root.zig");
+const ast = @import("ast.zig");
 const util = @import("util.zig");
 
 instance: *const anyopaque,
+parent: ?*const Scope = null,
 access_map: std.StaticStringMap(WriteAccessFunc),
 child_scopes: std.StaticStringMap(GetInnerScopeFunc),
-createIteratorFunc: ?*const fn (@This()) Iterator,
+createIteratorFunc: ?*const fn (*const anyopaque) Iterator,
+createConditionalFunc: ?*const fn (*const anyopaque) Conditional,
 const Scope = @This();
 
 pub const ScopeError = error{
@@ -32,18 +37,33 @@ const WriteAccessFunc = *const fn (
 ) (util.WriteError || error{NotPresent})!void;
 
 pub fn createIterator(self: @This()) error{NotIterable}!Iterator {
-    return if (self.createIteratorFunc) |f| f(self) else return error.NotIterable;
+    return if (self.createIteratorFunc) |f| f(self.instance) else return error.NotIterable;
+}
+pub fn createConditional(self: @This()) error{NotConditional}!Conditional {
+    return if (self.createConditionalFunc) |f| f(self.instance) else return error.NotConditional;
 }
 
-pub fn getChildScope(self: @This(), a: Allocator, key: []const u8) ScopeError!Scope {
-    const func = self.child_scopes.get(key) orelse {
+pub fn getChildScope(self_ptr: *const @This(), a: Allocator, key: []const u8) ScopeError!Scope {
+    const func = self_ptr.*.child_scopes.get(key) orelse {
         log.err(
             \\ Tried to get child scope with key '{s}' but it was not present.
             \\ Scope: {any}
-        , .{ key, self });
+        , .{ key, self_ptr });
         return error.NotPresent;
     };
-    return func(a, self);
+    var scope = try func(a, self_ptr.*);
+    scope.parent = self_ptr;
+    return scope;
+}
+
+pub fn getParentScope(self: @This(), depth: usize) error{NotPresent}!*const Scope {
+    log.debug("GETTING {d} PARENT of {f}", .{ depth, self });
+    if (depth == 1 or depth == 0) @panic("this function should not be called with values 0 or 1 for depth");
+    var s = self.parent orelse return error.NotPresent;
+    for (1..depth) |_| {
+        s = s.parent orelse return error.NotPresent;
+    }
+    return s;
 }
 
 pub fn writeAccess(
@@ -56,6 +76,7 @@ pub fn writeAccess(
     const func = self.access_map.get(key) orelse return error.NotPresent;
     return func(w, self, json_opts, print_json);
 }
+
 pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try writer.writeAll("Access Map:");
     for (self.access_map.keys()) |k| {
@@ -71,6 +92,16 @@ pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
             \\ '{s}'
         , .{k});
     }
+
+    if (self.parent) |parent|
+        try writer.print(
+            \\
+            \\ Parent Scope:
+            \\
+            \\ {f}
+        , .{parent.*})
+    else
+        try writer.writeAll("\nNo Parent Scope");
 }
 
 pub fn init(
@@ -110,13 +141,15 @@ pub fn init(
         , .{ kv.@"0", kv.@"1" });
     }
 
-    const BuilderType: ?type = Iterator.Builder(DerefT) catch null;
+    const IteratorBuilder: ?type = Iterator.Builder(DerefT) catch null;
+    const ConditionalBuilder: ?type = Conditional.Builder(DerefT) catch null;
 
     const self = @This(){
         .instance = @ptrCast(val),
         .access_map = std.StaticStringMap(WriteAccessFunc).init(access_kvs, a) catch return error.OutOfMemory,
         .child_scopes = std.StaticStringMap(GetInnerScopeFunc).init(child_kvs, a) catch return error.OutOfMemory,
-        .createIteratorFunc = if (BuilderType) |B| B.initFromScope else null,
+        .createIteratorFunc = if (IteratorBuilder) |B| B.init else null,
+        .createConditionalFunc = if (ConditionalBuilder) |B| B.init else null,
     };
     return self;
 }
@@ -126,6 +159,68 @@ pub fn deinit(self: @This(), a: Allocator) void {
         self.access_map.deinit(a);
     if (self.child_scopes.kvs.len > 0)
         self.child_scopes.deinit(a);
+}
+
+pub fn getScopeAndAccess(self: *const @This(), access_literal: []const u8) error{NotPresent}!struct {
+    *const Scope,
+    []const u8,
+} {
+    log.debug(
+        \\ SCOPE: {f}
+        \\ ACCESS LITERAL: {s}
+    , .{ self, access_literal });
+    const periods_prefix_len = util.countPeriodsPrefix(access_literal);
+    const lookup = access_literal[periods_prefix_len - 1 ..];
+    const sc = if (periods_prefix_len == 1)
+        self
+    else
+        self.getParentScope(periods_prefix_len) catch |e| {
+            log.err(
+                \\ SCOPE: {f}
+                \\ DOES NOT HAVE A PARENT AT DEPTH {d}
+            , .{ self, periods_prefix_len });
+            return e;
+        };
+
+    return .{
+        sc,
+        lookup,
+    };
+}
+
+/// checks if expressions are equal by comparing output of a writer against types
+/// assumes `left` and `right` are access or literal expressions
+pub fn evalComparison(self: @This(), a: Allocator, left: ast.ExpressionStatement, right: ast.ExpressionStatement) root.Error!bool {
+    const writeExpr = struct {
+        fn write(scope: *const Scope, w: *std.Io.Writer.Allocating, exp: @TypeOf(left)) (error{NotPresent} || util.WriteError)!void {
+            switch (exp) {
+                .access => |l| {
+                    const sc, const lookup = try scope.getScopeAndAccess(l.literal);
+                    try sc.*.access_map.get(lookup).?(&w.writer, sc.*, .{}, false);
+                },
+                .literal => |l| try switch (l.*) {
+                    .boolean => |b| w.writer.print("{any}", .{b}),
+                    .integer => |d| w.writer.print("{d}", .{d}),
+                    .string => |s| w.writer.print("{s}", .{s}),
+                },
+                .comparison => @panic("evalComparison not implemented for comparison expressions"),
+            }
+        }
+    }.write;
+
+    var left_w = std.Io.Writer.Allocating.init(a);
+    var right_w = std.Io.Writer.Allocating.init(a);
+    defer {
+        left_w.deinit();
+        right_w.deinit();
+    }
+
+    try writeExpr(&self, &left_w, left);
+    try writeExpr(&self, &right_w, right);
+
+    log.debug("comparing buffers:\nleft: {s}\nright: {s}", .{ left_w.written(), right_w.written() });
+
+    return std.mem.eql(u8, left_w.written(), right_w.written());
 }
 
 inline fn childScopesKvsCount(comptime Root: type, comptime T: type) usize {
@@ -138,6 +233,7 @@ inline fn childScopesKvsCount(comptime Root: type, comptime T: type) usize {
             }
             break :blk i;
         },
+        .optional => 1,
         .pointer, .array => if (Root != T) 1 else 0,
         else => 0,
     };
