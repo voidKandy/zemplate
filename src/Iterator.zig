@@ -74,8 +74,8 @@ pub inline fn Builder(
         };
 
     return struct {
-        pub fn initFromScope(scope: Scope) Iterator {
-            const info = ptrInfo(scope.instance);
+        pub fn init(ptr: *const anyopaque) Iterator {
+            const info = ptrInfo(ptr);
             log.debug(
                 \\ info
                 \\len: {d}

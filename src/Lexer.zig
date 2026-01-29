@@ -12,6 +12,7 @@ prev_token: ?Token.Type = null,
 /// Marks if we are currently between statement_open and statement_close
 in_statement: bool = false,
 in_expression: bool = false,
+in_string_literal: bool = false,
 
 const Self = @This();
 
@@ -44,12 +45,17 @@ pub fn deinit(_: Self) void {
 
 pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try writer.print(
-        \\ lexer:
+        \\ LEXER:
         \\ position: {d}
-        \\ next_position: {d}
-        \\ char: {c}
-        \\ input: {s}
-    , .{ self.pos, self.next_pos, self.ch, self.input });
+        \\ in_string_literal: {any}
+        \\ in_expression: {any}
+        \\ in_statement: {any}
+    , .{ self.pos, self.in_string_literal, self.in_expression, self.in_statement });
+    if (self.prev_token) |t| {
+        try writer.print(
+            \\ prev_token: {s}
+        , .{@tagName(t)});
+    }
 }
 
 /// Move forward by one byte
@@ -78,6 +84,17 @@ pub fn peekNextNth(self: *Self, nth: usize) ?*const u8 {
         return null;
     }
     return &self.input[self.pos + nth];
+}
+
+/// Should only be called when inside a string literal
+/// will consume everything until a ' is encountered
+fn readStringLiteral(self: *Self) usize {
+    const start_pos = self.pos;
+    while (self.peekNext()) |ch| {
+        if (ch.* == '\'') break;
+        _ = self.progress();
+    }
+    return self.pos - start_pos;
 }
 
 /// Reads characters until a whitespace is encountered
@@ -146,7 +163,7 @@ pub fn nextTokenSkipWhitespace(self: *Self) Token {
 
 pub fn nextToken(self: *Self) Token {
     var slice_end: usize = self.pos + 1;
-    var slice_start: usize = self.pos;
+    const slice_start: usize = self.pos;
     const keyword_first_char_map = Token.FirstCharMap.get();
 
     const token_opt: ?Token = outer: while (self.progress()) |c| : (slice_end += 1) {
@@ -154,41 +171,45 @@ pub fn nextToken(self: *Self) Token {
             ' ' => break :outer Token.create(" ", .space),
             '\n' => break :outer Token.create("\n", .newline),
             '\t' => break :outer Token.create("\t", .tab),
-            else => if (keyword_first_char_map.get(c)) |keywords| {
-                for (0..keywords.len) |i| {
-                    const keyword = keywords[i];
-
-                    const typ = Token.keyword_map.get(keyword) orelse @panic("malformed FirstCharMap");
-                    if ((typ.isComparison() or typ == .if_open or typ == .if_close or typ == .@"else") and (!self.in_statement)) break;
-
-                    switch (typ) {
-                        .json => if (self.prev_token orelse continue :outer != .access)
-                            continue :outer,
-                        .for_open, .for_close => if (self.prev_token orelse continue :outer != .statement_open)
-                            break,
-                        // continue :outer,
-                        else => {},
-                    }
-
-                    if (is_keyword: {
-                        for (1..keyword.len) |k| {
-                            const peek = self.peekNextNth(k - 1) orelse break :is_keyword false;
-                            if (peek.* != keyword[k]) break :is_keyword false;
-                        }
-                        break :is_keyword true;
-                    }) {
-                        for (1..keyword.len) |_| {
-                            _ = self.progress();
-                            slice_end += 1;
-                        }
-
-                        break :outer Token.create(self.input[slice_start..slice_end], typ);
-                    }
-                }
-            },
+            '\'' => if (self.in_statement) break :outer Token.create("\'", .string_wrapper),
+            else => {},
         }
 
-        if (self.peekNext() != null)
+        if (keyword_first_char_map.get(c)) |keywords| {
+            for (keywords) |keyword| {
+                const typ = Token.keyword_map.get(keyword) orelse @panic("malformed FirstCharMap");
+                if ((typ.isComparison() or typ == .if_open or typ == .if_close or typ == .@"else") and (!self.in_statement)) break;
+
+                switch (typ) {
+                    .json => if (self.prev_token orelse continue :outer != .access)
+                        continue :outer,
+                    .for_open, .for_close => if (self.prev_token orelse continue :outer != .statement_open)
+                        break,
+                    // continue :outer,
+                    else => {},
+                }
+
+                if (is_keyword: {
+                    for (1..keyword.len) |k| {
+                        const peek = self.peekNextNth(k - 1) orelse break :is_keyword false;
+                        if (peek.* != keyword[k]) break :is_keyword false;
+                    }
+                    break :is_keyword true;
+                }) {
+                    for (1..keyword.len) |_| {
+                        _ = self.progress();
+                        slice_end += 1;
+                    }
+
+                    break :outer Token.create(self.input[slice_start..slice_end], typ);
+                }
+            }
+        }
+
+        if (self.in_string_literal) {
+            slice_end += self.readStringLiteral();
+            break :outer Token.create(self.input[slice_start..slice_end], .literal);
+        } else if (self.peekNext() != null)
             slice_end += self.readWord();
 
         const typ: Token.Type = blk: {
@@ -204,39 +225,39 @@ pub fn nextToken(self: *Self) Token {
         break :outer null;
     };
 
-    slice_start = self.pos;
+    const token = token_opt orelse return Token.EOF;
 
-    if (token_opt) |token| {
-        if (!token.type.isWhitespace())
-            self.prev_token = token.type;
+    if (!token.type.isWhitespace())
+        self.prev_token = token.type;
 
-        if (token.type == .statement_open)
-            self.in_statement = true;
+    if (token.type == .statement_open)
+        self.in_statement = true;
 
-        if (token.type == .expression_open)
-            self.in_expression = true;
+    if (token.type == .expression_open)
+        self.in_expression = true;
 
-        if (token.type == .statement_close) {
-            if (!self.in_statement) {
-                log.err(
-                    \\ Encountered a .statement_close token before encountering a .statement_open token
-                , .{});
-            }
-            self.in_statement = false;
-        }
-
-        if (token.type == .expression_close) {
-            if (!self.in_expression) {
-                log.err(
-                    \\ Encountered a .expression_close token before encountering a .expression_open token
-                , .{});
-            }
-            self.in_expression = false;
-        }
-
-        log.debug("Got Token: {f}", .{token});
-        return token;
-    } else {
-        return Token.EOF;
+    if (token.type == .string_wrapper) {
+        self.in_string_literal = !self.in_string_literal;
     }
+
+    if (token.type == .statement_close) {
+        if (!self.in_statement) {
+            log.err(
+                \\ Encountered a .statement_close token before encountering a .statement_open token
+            , .{});
+        }
+        self.in_statement = false;
+    }
+
+    if (token.type == .expression_close) {
+        if (!self.in_expression) {
+            log.err(
+                \\ Encountered a .expression_close token before encountering a .expression_open token
+            , .{});
+        }
+        self.in_expression = false;
+    }
+
+    log.debug("Got Token: {f}", .{token});
+    return token;
 }

@@ -229,40 +229,40 @@ const ALL_CASES = &[_]LexerTestCase{
         .name = "small case",
         .content =
         \\ Hello {|.field|}!
+        \\ ||zz if .field == 'some value' zz||
+        \\ ||zz endif zz||
         ,
         .expected_tokens = &[_]Token{
-            .{
-                .literal = " ",
-                .type = .space,
-            },
-            .{
-                .literal = "Hello",
-                .type = .literal,
-            },
-            .{
-                .literal = " ",
-                .type = .space,
-            },
-            .{
-                .literal = "{|",
-                .type = .expression_open,
-            },
-            .{
-                .literal = ".field",
-                .type = .access,
-            },
-            .{
-                .literal = "|}",
-                .type = .expression_close,
-            },
-            .{
-                .literal = "!",
-                .type = .literal,
-            },
-            .{
-                .literal = "",
-                .type = .eof,
-            },
+            .{ .literal = " ", .type = .space },
+            .{ .literal = "Hello", .type = .literal },
+            .{ .literal = " ", .type = .space },
+            .{ .literal = "{|", .type = .expression_open },
+            .{ .literal = ".field", .type = .access },
+            .{ .literal = "|}", .type = .expression_close },
+            .{ .literal = "!", .type = .literal },
+            .{ .literal = "\n", .type = .newline },
+            .{ .literal = " ", .type = .space },
+            .{ .literal = "||zz", .type = .statement_open },
+            .{ .literal = " ", .type = .space },
+            .{ .literal = "if", .type = .if_open },
+            .{ .literal = " ", .type = .space },
+            .{ .literal = ".field", .type = .access },
+            .{ .literal = " ", .type = .space },
+            .{ .literal = "==", .type = .equal_to },
+            .{ .literal = " ", .type = .space },
+            .{ .literal = "\'", .type = .string_wrapper },
+            .{ .literal = "some value", .type = .literal },
+            .{ .literal = "\'", .type = .string_wrapper },
+            .{ .literal = " ", .type = .space },
+            .{ .literal = "zz||", .type = .statement_close },
+            .{ .literal = "\n", .type = .newline },
+            .{ .literal = " ", .type = .space },
+            .{ .literal = "||zz", .type = .statement_open },
+            .{ .literal = " ", .type = .space },
+            .{ .literal = "endif", .type = .if_close },
+            .{ .literal = " ", .type = .space },
+            .{ .literal = "zz||", .type = .statement_close },
+            .{ .literal = "", .type = .eof },
         },
     },
     .{
@@ -447,7 +447,7 @@ const ALL_CASES = &[_]LexerTestCase{
         .content =
         \\ <div>
         \\  {| .field |}
-        \\  <div attribute="{| .attr.sub |}" other="{|.other|}" something_else="{|.something_else|}"></div>
+        \\  <div attribute='{| .attr.sub |}' other="{|.other|}" something_else="{|.something_else|}"></div>
         \\ <p> for too long </p>
         \\ <{|.something|}>
         \\ </{|.something|}>
@@ -517,7 +517,7 @@ const ALL_CASES = &[_]LexerTestCase{
                 .type = .space,
             },
             .{
-                .literal = "attribute=\"",
+                .literal = "attribute=\'",
                 .type = .literal,
             },
             .{
@@ -541,7 +541,7 @@ const ALL_CASES = &[_]LexerTestCase{
                 .type = .expression_close,
             },
             .{
-                .literal = "\"",
+                .literal = "\'",
                 .type = .literal,
             },
             .{

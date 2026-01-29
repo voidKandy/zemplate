@@ -191,6 +191,8 @@ pub const ExpressionStatement = union(enum) {
     comparison: *ComparisonExpression,
     literal: *LiteralExpression,
 
+    /// ONLY for meta-equality
+    /// Not to be used to compare expressions that need evaluation
     pub fn eql(self: @This(), other: @This()) bool {
         switch (self) {
             .access => {
@@ -364,7 +366,8 @@ pub const LiteralExpression = union(enum) {
         try writer.writeByte('\n');
     }
 
-    pub fn tryFromLiteral(literal: []const u8) ?@This() {
+    pub fn tryFromLiteral(literal: []const u8, is_string: bool) ?@This() {
+        if (is_string) return .{ .string = literal };
         const neg = literal[0] == '-';
         const int = std.fmt.parseInt(i32, if (neg) literal[1..] else literal, 10) catch |e| {
             if (e == error.Overflow) @panic("Overflow when parsing integer!");
@@ -372,11 +375,6 @@ pub const LiteralExpression = union(enum) {
             if (std.mem.eql(u8, "false", literal) or std.mem.eql(u8, "true", literal)) {
                 return .{ .boolean = std.mem.eql(u8, "true", literal) };
             }
-
-            for ("\'\"") |string_sep|
-                if (literal[0] == string_sep and
-                    literal[literal.len - 1] == string_sep)
-                    return .{ .string = literal[1 .. literal.len - 1] };
 
             return null;
         };

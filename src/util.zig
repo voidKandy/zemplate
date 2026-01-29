@@ -19,6 +19,14 @@ pub fn Deref(comptime T: type) type {
     }
 }
 
+pub fn countPeriodsPrefix(string: []const u8) usize {
+    var i: usize = 0;
+    while (i < string.len and string[i] == '.') : (i += 1) {}
+    if (i == 0) @panic("countPeriodsPrefix called on string that has no period prefix");
+
+    return i;
+}
+
 pub inline fn countPeriods(comptime string: []const u8) usize {
     comptime var i: usize = 0;
 
@@ -157,6 +165,8 @@ pub inline fn writeType(
             else
                 writer.print("{d}", .{inst});
         },
+        .bool => return writer.print("{any}", .{inst}),
+
         else => {},
     }
     log.warn("No branch for handling {s}", .{@typeName(T)});

@@ -8,6 +8,7 @@ const runTest = @import("shared.zig").runTest;
 
 test "rendering" {
     runTest("Render For Loop", renderForLoopTest);
+    runTest("Render If", renderIfTest);
 }
 
 const allocator = std.testing.allocator;
@@ -29,6 +30,8 @@ const TestCase = struct {
         inner: Other,
         arr: []const Other,
         string: []const u8,
+        opt: ?[]const u8 = null,
+        boolean: bool = false,
     };
 
     fn runTest(self: @This()) anyerror!void {
@@ -43,7 +46,7 @@ const TestCase = struct {
         for (self.inputs_and_expected) |iande| {
             var lexer = Lexer.init(iande.input);
             var parser = try Parser.init(a, &lexer);
-            var program = try parser.parseProgram(a);
+            var program = parser.parseProgram(a) catch return parser.logErrors(std.log);
             defer program.statements.deinit(a);
             const scope = try zemplate.Scope.init(&self.obj, a);
             defer scope.deinit(a);
@@ -57,13 +60,12 @@ const TestCase = struct {
                     .{},
                 );
             }
-
             shared.logDiff(iande.expected, w.written()) catch |e| {
                 std.log.err(
                     \\Expected:
-                    \\{s}
+                    \\'{s}'
                     \\Got:
-                    \\{s}
+                    \\'{s}'
                 , .{ iande.expected, w.written() });
                 return e;
             };
@@ -108,4 +110,101 @@ fn renderForLoopTest() !void {
     };
 
     try case.runTest();
+}
+
+fn renderIfTest() !void {
+    const obj = TestCase.Test{
+        .variable = 42,
+        .string = "outer string",
+        .opt = "optional",
+        .inner = .{ .string = "inner string" },
+        .arr = &[_]TestCase.Other{
+            .{
+                .string = "one",
+            },
+            .{
+                .string = "two",
+            },
+        },
+    };
+
+    const cases = &[_]TestCase{
+        .{
+            .obj = obj,
+            .inputs_and_expected = &[_]TestCase.IandE{.{ .input = 
+            \\ ||zz if .opt zz||
+            \\ {|.|}
+            \\ ||zz endif zz||
+            , .expected = 
+            \\ optional
+            \\ 
+        }},
+        },
+        .{
+            .obj = blk: {
+                var o = obj;
+                o.opt = null;
+                break :blk o;
+            },
+            .inputs_and_expected = &[_]TestCase.IandE{.{ .input = 
+            \\ ||zz if .opt zz||
+            \\ {|.|}
+            \\ ||zz endif zz||
+            , .expected = 
+            \\ 
+            \\ 
+        }},
+        },
+        .{
+            .obj = blk: {
+                var o = obj;
+                o.boolean = true;
+                break :blk o;
+            },
+            .inputs_and_expected = &[_]TestCase.IandE{.{ .input = 
+            \\ ||zz if .opt zz||
+            \\ ||zz for . zz||
+            \\ {|.|}
+            \\ ||zz endfor zz||
+            \\ {|..string|}
+            \\ ||zz if ..variable == 42 zz||
+            \\ {|..variable|} == 42
+            \\ ||zz else zz||
+            \\ {|..variable|} != 42
+            \\ ||zz endif zz||
+            \\ ||zz if ..boolean == true zz||
+            \\ {|..boolean|} == true
+            \\ ||zz else zz||
+            \\ {|..boolean|} != true
+            \\ ||zz endif zz||
+            \\ ||zz if ..inner.string == 'inner string' zz||
+            \\ {|..inner.string|} == 'inner string'
+            \\ ||zz else zz||
+            \\ {|..inner.string|} != 'inner string'
+            \\ ||zz endif zz||
+            \\ ||zz endif zz||
+            , .expected = 
+            \\ o
+            \\ p
+            \\ t
+            \\ i
+            \\ o
+            \\ n
+            \\ a
+            \\ l
+            \\ 
+            \\ outer string
+            \\ 42 == 42
+            \\ 
+            \\ true == true
+            \\ 
+            \\ inner string == 'inner string'
+            \\ 
+            \\ 
+        }},
+        },
+    };
+
+    for (cases) |case|
+        try case.runTest();
 }
