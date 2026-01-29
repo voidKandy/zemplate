@@ -40,7 +40,7 @@ Originally created for my [portfolio site](https://github.com/voidKandy/zortfoli
 ---
 
 ## Template Syntax Examples
-> More complete examples can be found in `tests/rendering.zig` and `tests/all.zig`
+> More complete examples can be found in `tests/rendering.zig` and `tests/templating.zig`
 
 ### Simple Interpolation
 
