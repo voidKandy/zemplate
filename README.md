@@ -190,3 +190,22 @@ const render = try tmpl.render(
 - [x] If statements
 - [x] String literals
 - [ ] Performance optimization
+
+## Known Issues
+Template's cannot have `[][]T` as a direct field. A workaround is to use a custom struct. So instead of: 
+```zig
+const MyTemplateStruct = struct {
+  array_array: [][]const u8,
+};
+```
+Do something like: 
+```zig
+const StringWrap = struct {
+  string: []const u8,
+};
+const MyTemplateStruct = struct {
+  string_wrap_array: []StringWrap,
+};
+```
+
+
