@@ -60,15 +60,8 @@ const TestCase = struct {
                     .{},
                 );
             }
-            shared.logDiff(iande.expected, w.written()) catch |e| {
-                std.log.err(
-                    \\Expected:
-                    \\'{s}'
-                    \\Got:
-                    \\'{s}'
-                , .{ iande.expected, w.written() });
-                return e;
-            };
+            try std.testing.expectEqualStrings(iande.expected, w.written());
+            w.clearRetainingCapacity();
         }
     }
 };
@@ -88,25 +81,36 @@ fn renderForLoopTest() !void {
                 },
             },
         },
-        .inputs_and_expected = &[_]TestCase.IandE{.{ .input = 
-        \\ ||zz for .string zz||
-        \\ {|.|}
-        \\ ||zz endfor zz||
-        , .expected = 
-        \\ o
-        \\ u
-        \\ t
-        \\ e
-        \\ r
-        \\  
-        \\ s
-        \\ t
-        \\ r
-        \\ i
-        \\ n
-        \\ g
-        \\ 
-    }},
+        .inputs_and_expected = &[_]TestCase.IandE{
+            .{ .input =
+            \\ ||zz for .string zz||
+            \\ {|.|}
+            \\ ||zz endfor zz||
+            , .expected =
+            \\ o
+            \\ u
+            \\ t
+            \\ e
+            \\ r
+            \\  
+            \\ s
+            \\ t
+            \\ r
+            \\ i
+            \\ n
+            \\ g
+            \\ 
+            },
+            .{ .input =
+            \\ ||zz for .arr zz||
+            \\ {|.string |}
+            \\ ||zz endfor zz||
+            , .expected =
+            \\ one
+            \\ two
+            \\ 
+            },
+        },
     };
 
     try case.runTest();
@@ -131,14 +135,14 @@ fn renderIfTest() !void {
     const cases = &[_]TestCase{
         .{
             .obj = obj,
-            .inputs_and_expected = &[_]TestCase.IandE{.{ .input = 
+            .inputs_and_expected = &[_]TestCase.IandE{.{ .input =
             \\ ||zz if .opt zz||
             \\ {|.|}
             \\ ||zz endif zz||
-            , .expected = 
+            , .expected =
             \\ optional
             \\ 
-        }},
+            }},
         },
         .{
             .obj = blk: {
@@ -146,14 +150,14 @@ fn renderIfTest() !void {
                 o.opt = null;
                 break :blk o;
             },
-            .inputs_and_expected = &[_]TestCase.IandE{.{ .input = 
+            .inputs_and_expected = &[_]TestCase.IandE{.{ .input =
             \\ ||zz if .opt zz||
             \\ {|.|}
             \\ ||zz endif zz||
-            , .expected = 
+            , .expected =
             \\ 
             \\ 
-        }},
+            }},
         },
         .{
             .obj = blk: {
@@ -161,7 +165,7 @@ fn renderIfTest() !void {
                 o.boolean = true;
                 break :blk o;
             },
-            .inputs_and_expected = &[_]TestCase.IandE{.{ .input = 
+            .inputs_and_expected = &[_]TestCase.IandE{.{ .input =
             \\ ||zz if .opt zz||
             \\ ||zz for . zz||
             \\ {|.|}
@@ -183,7 +187,7 @@ fn renderIfTest() !void {
             \\ {|..inner.string|} != 'inner string'
             \\ ||zz endif zz||
             \\ ||zz endif zz||
-            , .expected = 
+            , .expected =
             \\ o
             \\ p
             \\ t
@@ -201,7 +205,7 @@ fn renderIfTest() !void {
             \\ inner string == 'inner string'
             \\ 
             \\ 
-        }},
+            }},
         },
     };
 

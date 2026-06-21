@@ -30,38 +30,6 @@ pub const ansi = struct {
     pub const BOLD = "\x1b[1m";
 };
 
-pub fn logDiff(expected: []const u8, actual: []const u8) !void {
-    if (std.mem.indexOfDiff(u8, expected, actual)) |idx| {
-        const start = @max(idx, @as(usize, 10)) - 10;
-        const end_expected = @min(expected.len, idx + 10);
-        const end_actual = @min(actual.len, idx + 10);
-
-        const exp_ctx = expected[start..end_expected];
-        const act_ctx = actual[start..end_actual];
-
-        std.log.err("❌ Render mismatch at index {d}", .{idx});
-
-        std.log.err("Expected context ({}..{}): \"{s}\"", .{ start, end_expected, exp_ctx });
-        std.log.err("Actual   context ({}..{}): \"{s}\"", .{ start, end_actual, act_ctx });
-
-        if (expected.len <= idx)
-            std.log.err("Expected is too short", .{})
-        else
-            std.log.err("Expected char: '{c}' (byte {d})", .{
-                expected[idx], expected[idx],
-            });
-        if (actual.len <= idx)
-            std.log.err("Actual is too short", .{})
-        else
-            std.log.err("Actual   char: '{c}' (byte {d})", .{
-                actual[idx], actual[idx],
-            });
-
-        return error.DiffExists;
-    }
-    return;
-}
-
 pub const Failure = struct {
     index: usize,
     start: usize,

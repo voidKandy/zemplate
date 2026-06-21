@@ -2,7 +2,6 @@ const std = @import("std");
 const zemplate = @import("zemplate");
 const print = std.debug.print;
 const runTest = @import("shared.zig").runTest;
-const logDiff = @import("shared.zig").logDiff;
 const Lexer = zemplate.Lexer;
 const Token = zemplate.Token;
 
@@ -208,15 +207,7 @@ fn renderTest() !void {
         std.testing.allocator.free(sani_render);
     }
 
-    logDiff(sani_expected, sani_render) catch |e| {
-        std.log.err(
-            \\Expected:
-            \\{s}
-            \\Got:
-            \\{s}
-        , .{ expected, render });
-        return e;
-    };
+    try std.testing.expectEqualStrings(sani_expected, sani_render);
 }
 
 fn removeWhitespace(input: []const u8) anyerror![]const u8 {

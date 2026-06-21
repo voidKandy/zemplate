@@ -175,7 +175,12 @@ pub fn renderStatement(
             switch (s) {
                 .access => |acc| {
                     const sc, const lookup = try scope.getScopeAndAccess(acc.literal);
-                    try sc.*.writeAccess(lookup, writer, json_opts, acc.json);
+                    sc.*.writeAccess(lookup, writer, json_opts, acc.json) catch |e| {
+                        log.err(
+                            \\ Failed to write access '{s}' : {any}
+                        , .{ acc.literal, e });
+                        return e;
+                    };
                 },
                 else => {},
             }

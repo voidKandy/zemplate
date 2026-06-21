@@ -1,7 +1,8 @@
 .{
     .name = .zemplate,
     .fingerprint = 0x82ea0db15ba922b5,
-    .version = "1.5.1",
+    .version = "1.5.2",
+    .minimum_zig_version = "0.16.0",
     .dependencies = .{},
     .paths = .{
         "build.zig",
