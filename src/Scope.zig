@@ -226,8 +226,8 @@ inline fn childScopesKvsCount(comptime Root: type, comptime T: type) usize {
     return switch (@typeInfo(T)) {
         .@"struct" => blk: {
             comptime var i: usize = if (T == Root) 0 else 1;
-            inline for (@typeInfo(T).@"struct".fields) |f| {
-                const c = childScopesKvsCount(Root, f.type);
+            inline for (@typeInfo(T).@"struct".field_types) |f| {
+                const c = childScopesKvsCount(Root, f);
                 i += c;
             }
             break :blk i;
@@ -265,21 +265,21 @@ inline fn childScopesKvs(
         switch (@typeInfo(T)) {
             .@"struct" => |st| {
                 var i: usize = if (basename.len > 1) 1 else 0;
-                for (st.fields) |f| {
-                    util.compileLogPrint("FIELD: {s}", .{f.name});
+                for (st.field_names, st.field_types) |name, typ| {
+                    util.compileLogPrint("FIELD: {s}", .{name});
 
-                    const expected_size = childScopesKvsCount(Root, f.type);
+                    const expected_size = childScopesKvsCount(Root, typ);
                     if (expected_size == 0) {
                         util.compileLogPrint("SIZE == 0", .{});
                         continue;
                     }
 
                     const nested_basename = if (basename.len == 1)
-                        basename ++ f.name
+                        basename ++ name
                     else
-                        basename ++ "." ++ f.name;
+                        basename ++ "." ++ name;
 
-                    const nested = childScopesKvs(Root, f.type, nested_basename);
+                    const nested = childScopesKvs(Root, typ, nested_basename);
                     for (nested) |kv| {
                         tmp[i] = kv;
                         i += 1;
@@ -302,12 +302,12 @@ inline fn childScopesKvs(
 inline fn accessMapKvsCount(comptime T: type) usize {
     switch (@typeInfo(T)) {
         .@"struct" => {
-            const FIELDS = @typeInfo(T).@"struct".fields;
+            const FIELDS = @typeInfo(T).@"struct".field_types;
 
             const N_NESTED = comptime blk: {
                 var i: usize = 0;
                 for (FIELDS) |f|
-                    i += accessMapKvsCount(f.type) - 1;
+                    i += accessMapKvsCount(f) - 1;
                 break :blk i;
             };
 
@@ -345,7 +345,7 @@ inline fn accessMapKvs(
 
     switch (@typeInfo(T)) {
         .@"struct" => {
-            const FIELDS = @typeInfo(T).@"struct".fields;
+            const FIELDS = @typeInfo(T).@"struct".field_names;
 
             const OUT_SIZE = accessMapKvsCount(T);
 
@@ -358,11 +358,11 @@ inline fn accessMapKvs(
                 var i: usize = 1;
                 for (FIELDS) |f| {
                     const name = if (basename.len == 1)
-                        comptimePrint("{s}{s}", .{ basename, f.name })
+                        comptimePrint("{s}{s}", .{ basename, f })
                     else
-                        comptimePrint("{s}.{s}", .{ basename, f.name });
+                        comptimePrint("{s}.{s}", .{ basename, f });
 
-                    const entries = accessMapKvs(Root, f.type, name);
+                    const entries = accessMapKvs(Root, @FieldType(T, f), name);
                     for (entries) |kv| {
                         tmp[i] = kv;
                         i += 1;

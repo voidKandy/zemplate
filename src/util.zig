@@ -145,15 +145,15 @@ pub inline fn writeType(
                 return try writer.writeAll(inst.items);
             }
 
-            inline for (s.fields) |fe| {
+            inline for (s.field_names, s.field_types) |name, typ| {
                 log.debug(
                     \\ field '{s}' of {s}
-                , .{ fe.name, @typeName(T) });
-                writeType(fe.type, @field(inst, fe.name), writer, json_opts, print_json) catch |e| {
+                , .{ name, @typeName(T) });
+                writeType(typ, @field(inst, name), writer, json_opts, print_json) catch |e| {
                     if (e != error.InvalidType) @panic(@errorName(e));
                     log.err(
                         \\ failing field '{s}'
-                    , .{fe.name});
+                    , .{name});
                 };
             }
 
